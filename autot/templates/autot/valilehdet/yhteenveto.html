@@ -1,0 +1,103 @@
+<div class="ruudukko r2">
+  <div>
+    <div class="kortti">
+      <h2>Vaihe</h2>
+      {% if k.tila == 'hylatty' %}
+        <p>Ostotarjous hylätty.{% if k.hylkayksen_syy %} Syy: <em>{{ k.hylkayksen_syy }}</em>{% endif %}</p>
+      {% else %}
+      <div class="tilapolku">
+        {% for nimi, luokka in polku %}<span class="{{ luokka }}">{{ nimi }}</span>{% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="siirrot">
+      {% for s in siirrot %}
+        <details class="siirto">
+          <summary>{% if s.taakse %}← Palauta: {{ s.nimi }}{% elif s.tila == 'hylatty' %}✕ Ei osteta{% else %}→ {{ s.nimi }}{% endif %}</summary>
+          <form method="post" action="{% url 'autot:vaihda_tila' k.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="tila" value="{{ s.tila }}">
+            {% if s.tila == 'ostettu' and not s.taakse %}
+              <div class="kentat">
+                <div><label>Ostohinta (€) *</label><input name="ostohinta" inputmode="decimal" required value="{% if k.ostohinta is not None %}{{ k.ostohinta|euro_input }}{% else %}{{ k.tarjottu_hinta|euro_input }}{% endif %}"></div>
+                <div><label>Ostopäivä</label><input type="date" name="ostopvm" value="{{ k.ostopvm|default:tanaan|date:'Y-m-d' }}"></div>
+                <div><label>Verokohtelu</label><select name="alv_kasittely">{% for a_, n in ALV_KASITTELYT %}<option value="{{ a_ }}" {% if k.alv_kasittely == a_ %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></div>
+              </div>
+            {% elif s.tila == 'hylatty' %}
+              <label>Syy (auttaa myöhemmin hinnoittelussa)</label>
+              <input name="hylkayksen_syy" placeholder="esim. hinta liian korkea, huono kunto">
+            {% elif s.tila == 'varattu' and not s.taakse %}
+              <label>Varaaja</label>
+              <select name="asiakas"><option value="">–</option>{% for y in yritykset %}<option value="{{ y.id }}" {% if k.asiakas_id == y.id %}selected{% endif %}>{{ y.nimi }}</option>{% endfor %}</select>
+            {% elif s.tila == 'myyty' and not s.taakse %}
+              <div class="kentat">
+                <div><label>Ostaja *</label><select name="asiakas" required><option value="">–</option>{% for y in yritykset %}<option value="{{ y.id }}" {% if k.asiakas_id == y.id %}selected{% endif %}>{{ y.nimi }}</option>{% endfor %}</select></div>
+                <div><label>Myyntihinta (€) * <span class="pieni">{% if k.alv_kasittely == 'marginaali' %}(verollinen){% else %}(veroton){% endif %}</span></label><input name="myyntihinta" inputmode="decimal" required value="{% if k.myyntihinta is not None %}{{ k.myyntihinta|euro_input }}{% else %}{{ k.pyyntihinta|euro_input }}{% endif %}"></div>
+                <div><label>Myyntipäivä</label><input type="date" name="myyntipvm" value="{{ k.myyntipvm|default:tanaan|date:'Y-m-d' }}"></div>
+                <div><label>Laskunumero</label><input name="laskunumero" value="{{ k.laskunumero }}"></div>
+              </div>
+            {% elif s.tila == 'toimitettu' %}
+              <label>Toimituspäivä</label><input type="date" name="toimitettu_pvm" value="{{ tanaan|date:'Y-m-d' }}">
+            {% else %}
+              <p class="pieni himmea" style="margin:0">Siirretäänkö auto tilaan {{ s.nimi }}?</p>
+            {% endif %}
+            <div class="lomake-alas"><button class="ensisijainen">Vahvista</button></div>
+          </form>
+        </details>
+      {% endfor %}
+      </div>
+      {% if k.paattynyt %}
+        <form method="post" action="{% url 'autot:palaa' k.id %}" style="margin-top:14px"
+              data-varmista="Avataanko tälle autolle uusi kierros? Nykyinen kierros jää historiaan.">
+          {% csrf_token %}
+          <button>↻ Auto palaa meille, avaa uusi kierros</button>
+        </form>
+      {% endif %}
+    </div>
+
+    <div class="kortti">
+      <h2>Avoimet tehtävät</h2>
+      {% for t in avoimet_tehtavat %}
+        {% include "autot/_tehtava.html" with nayta_auto=False %}
+      {% empty %}<p class="himmea" style="margin:0">Ei avoimia tehtäviä.</p>{% endfor %}
+      {% if avoimia_yhteensa > 6 %}<p class="pieni"><a href="?v=tehtavat" hx-get="{% url 'autot:valilehti' k.id 'tehtavat' %}" hx-target="#valilehti" hx-push-url="?v=tehtavat">Kaikki {{ avoimia_yhteensa }} →</a></p>{% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="kortti" id="kate">
+      <h2>Kate {% if kate.arvio %}<span class="merkki">arvio pyyntihinnalla</span>{% endif %}</h2>
+      {% if kate %}
+        <div class="kate-rivi"><span>{% if kate.arvio %}Pyyntihinta{% else %}Myyntihinta{% endif %} {% if k.alv_kasittely == 'marginaali' %}(verollinen){% else %}(veroton){% endif %}</span><span>{{ kate.myynti|euro }}</span></div>
+        {% if k.alv_kasittely == 'marginaali' %}
+        <div class="kate-rivi"><span>– Marginaalivero ({{ request.liike.alv_prosentti|pilkku }} %)</span><span>{{ kate.marginaalivero|euro }}</span></div>
+        {% endif %}
+        <div class="kate-rivi"><span>– Ostohinta</span><span>{{ kate.osto|euro }}</span></div>
+        <div class="kate-rivi"><span>– Kulut ennen myyntiä (alv 0)</span><span>{{ kate.kulut_ennen_myyntia|euro }}</span></div>
+        {% if kate.jalkikulut %}
+        <div class="kate-rivi" style="font-weight:600"><span>= Kate myyntihetkellä</span><span>{{ kate.kate_myyntihetki|euro }}</span></div>
+        <div class="kate-rivi"><span>– Jälkikulut (myynnin jälkeen)</span><span class="negatiivinen">{{ kate.jalkikulut|euro }}</span></div>
+        {% endif %}
+        <div class="kate-rivi summa"><span>{% if kate.jalkikulut %}Lopullinen kate{% else %}Kate{% endif %}</span>
+          <span class="{% if kate.kate >= 0 %}positiivinen{% else %}negatiivinen{% endif %}">{{ kate.kate|euro }}{% if kate.kate_prosentti is not None %} <span class="pieni">({{ kate.kate_prosentti|floatformat:1 }} %)</span>{% endif %}</span></div>
+      {% else %}
+        <p class="himmea" style="margin:0">Kate lasketaan, kun ostohinta ja pyynti- tai myyntihinta on annettu.
+          {% if k.tarjottu_hinta %}<br>Pyydetty hinta: <strong>{{ k.tarjottu_hinta|euro }}</strong>{% endif %}</p>
+      {% endif %}
+    </div>
+
+    <div class="kortti">
+      <h2>Tiedot</h2>
+      <table>
+        <tr><td class="himmea">Toimittaja</td><td>{% if k.toimittaja %}<a href="{% url 'autot:yritys' k.toimittaja_id %}">{{ k.toimittaja.nimi }}</a>{% else %}–{% endif %} <span class="pieni himmea">{{ k.ostokanava|valinta:OSTOKANAVAT }}</span></td></tr>
+        <tr><td class="himmea">Ostettu</td><td>{{ k.ostopvm|pvm }}{% if k.ostopvm and not k.paattynyt %} · <strong>{{ k.ostopvm|paivia }} pv sitten</strong>{% endif %}</td></tr>
+        <tr><td class="himmea">Verokohtelu</td><td>{{ k.get_alv_kasittely_display }}</td></tr>
+        {% if k.asiakas %}<tr><td class="himmea">Ostaja</td><td><a href="{% url 'autot:yritys' k.asiakas_id %}">{{ k.asiakas.nimi }}</a></td></tr>{% endif %}
+        {% if k.myyntipvm %}<tr><td class="himmea">Myyty</td><td>{{ k.myyntipvm|pvm }}{% if k.laskunumero %} · lasku {{ k.laskunumero }}{% endif %}
+          · {% if k.maksettu_pvm %}<span class="merkki">maksettu {{ k.maksettu_pvm|pvm }}</span>{% else %}<span class="merkki varoitus">maksamatta</span>{% endif %}</td></tr>{% endif %}
+        {% if k.sijainti %}<tr><td class="himmea">Sijainti</td><td>{{ k.sijainti }}</td></tr>{% endif %}
+        {% if k.huomiot %}<tr><td class="himmea">Huomiot</td><td>{{ k.huomiot|linebreaksbr }}</td></tr>{% endif %}
+      </table>
+    </div>
+  </div>
+</div>

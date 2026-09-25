@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block otsikko %}Käyttäjät{% endblock %}
+{% block sisalto %}
+<h1>Hallinta</h1>
+{% include "autot/_hallinta_nav.html" %}
+<div class="kortti" style="padding:0"><div class="taulukko-kaari"><table>
+  <thead><tr><th>Nimi</th><th>Sähköposti</th><th>Rooli</th><th>Aktiivinen</th><th>Uusi salasana</th><th></th></tr></thead>
+  {% for u, lomake in rivit %}
+  <tr>
+    <td>{{ lomake.nimi }}</td>
+    <td class="pieni">{{ u.sahkoposti }}</td>
+    <td>{{ lomake.rooli }}</td>
+    <td>{{ lomake.is_active }}</td>
+    <td>{{ lomake.salasana }}</td>
+    <td><form method="post" id="u{{ u.id }}">{% csrf_token %}<input type="hidden" name="id" value="{{ u.id }}"><button class="pieni">Tallenna</button></form></td></tr>
+  {% endfor %}
+</table></div></div>
+<div class="kortti"><h2>Uusi käyttäjä</h2>
+  <form method="post">{% csrf_token %}<div class="kentat">
+    {% include "_kentta.html" with kentta=uusi.nimi %}
+    {% include "_kentta.html" with kentta=uusi.sahkoposti %}
+    {% include "_kentta.html" with kentta=uusi.rooli %}
+    {% include "_kentta.html" with kentta=uusi.salasana %}
+  </div><div class="lomake-alas"><button class="ensisijainen">Lisää</button></div></form>
+</div>
+{% endblock %}

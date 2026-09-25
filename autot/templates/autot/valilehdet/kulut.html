@@ -1,0 +1,43 @@
+<div class="kortti">
+  <h2>Kulut</h2>
+  <p class="pieni himmea" style="margin-top:-6px">Kuluja voi kirjata milloin tahansa, myös myynnin jälkeen (esim. reklamaatio). Myyntipäivän jälkeiset kulut näkyvät jälkikuluina ja pienentävät lopullista katetta.</p>
+  <div class="taulukko-kaari">
+  <table>
+    <thead><tr><th>Pvm</th><th>Tyyppi</th><th>Kuvaus</th><th class="num">Veroton</th><th class="num">ALV %</th><th></th></tr></thead>
+    <tbody>
+    {% for r in kulut %}
+      <tr>
+        <td class="nowrap">{{ r.pvm|pvm }}</td>
+        <td>{{ r.get_tyyppi_display }}{% if r.jalki %} <span class="merkki virhe">jälkikulu</span>{% endif %}</td>
+        <td>{{ r.kuvaus }}{% if r.toimittaja %} <span class="himmea pieni">· {{ r.toimittaja }}</span>{% endif %}</td>
+        <td class="num">{{ r.summa_veroton|euro:True }}</td>
+        <td class="num">{{ r.alv_prosentti|pilkku }}</td>
+        <td class="oikea">
+          {% url 'autot:poista_kulu' k.id r.id as poisto %}
+          <form method="post" action="{{ poisto }}" class="inline" data-varmista="Poistetaanko kulu?"
+                hx-post="{{ poisto }}" hx-target="#valilehti" hx-confirm="Poistetaanko kulu?">
+            {% csrf_token %}<button class="linkki vaara pieni">Poista</button></form>
+        </td>
+      </tr>
+    {% empty %}<tr><td colspan="6" class="himmea">Ei kuluja.</td></tr>{% endfor %}
+    </tbody>
+    {% if kulut %}<tfoot><tr><td colspan="3">Yhteensä{% if jalki %} <span class="pieni himmea">(joista jälkikuluja {{ jalki|euro:True }})</span>{% endif %}</td><td class="num">{{ kulut_yht|euro:True }}</td><td colspan="2"></td></tr></tfoot>{% endif %}
+  </table>
+  </div>
+
+  <h3>Lisää kulu</h3>
+  {% url 'autot:lisaa_kulu' k.id as osoite %}
+  <form method="post" action="{{ osoite }}" hx-post="{{ osoite }}" hx-target="#valilehti">
+    {% csrf_token %}
+    <div class="kentat">
+      {% include "_kentta.html" with kentta=lomake.tyyppi %}
+      {% include "_kentta.html" with kentta=lomake.summa %}
+      {% include "_kentta.html" with kentta=lomake.summa_on %}
+      {% include "_kentta.html" with kentta=lomake.alv_prosentti %}
+      {% include "_kentta.html" with kentta=lomake.pvm %}
+      {% include "_kentta.html" with kentta=lomake.toimittaja %}
+      {% include "_kentta.html" with kentta=lomake.kuvaus leve=True %}
+    </div>
+    <div class="lomake-alas"><button class="ensisijainen">Lisää kulu</button></div>
+  </form>
+</div>

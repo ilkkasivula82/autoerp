@@ -1,0 +1,50 @@
+name: Testit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  testit:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: autoerp
+          POSTGRES_PASSWORD: autoerp
+          POSTGRES_DB: autoerp
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://autoerp:autoerp@localhost:5432/autoerp
+      SECRET_KEY: ci-avain-ei-salainen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Riippuvuudet
+        run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Django-tarkistukset ja migraatiot ajan tasalla
+        run: |
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+      - name: Tuotantoasetusten tarkistus
+        run: python manage.py check --deploy --fail-level WARNING
+        env:
+          SECRET_KEY: ci-avain-joka-on-riittavan-pitka-ja-satunnainen-0123456789abcdef
+          ALLOWED_HOSTS: autoerp.example.com
+      - name: Testit
+        run: python manage.py test --parallel 1 -v 2

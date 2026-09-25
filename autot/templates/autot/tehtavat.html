@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block otsikko %}Tehtävät{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi"><h1>Tehtävät</h1>
+  <form method="get" style="display:flex;gap:8px;flex-wrap:wrap" hx-get="{% url 'autot:tehtavat' %}" hx-trigger="change" hx-target="#tehtavalista" hx-select="#tehtavalista" hx-push-url="true">
+    <select name="nayta" style="width:auto">
+      <option value="avoimet" {% if nayta == 'avoimet' %}selected{% endif %}>Avoimet</option>
+      <option value="tehdyt" {% if nayta == 'tehdyt' %}selected{% endif %}>Tehdyt</option>
+      <option value="kaikki" {% if nayta == 'kaikki' %}selected{% endif %}>Kaikki</option>
+    </select>
+    <select name="kenelle" style="width:auto">
+      <option value="kaikki">Kaikki henkilöt</option><option value="omat" {% if kenelle == 'omat' %}selected{% endif %}>Omat</option>
+      {% for u in kayttajat %}<option value="{{ u.id }}" {% if kenelle == u.id|stringformat:"d" %}selected{% endif %}>{{ u.nimi }}</option>{% endfor %}
+    </select>
+    <noscript><button>Näytä</button></noscript>
+  </form>
+</div>
+<div class="kortti" id="tehtavalista">
+  {% for t in rivit %}
+    {% include "autot/_tehtava.html" with nayta_auto=True %}
+  {% empty %}<p class="himmea">Ei tehtäviä.</p>{% endfor %}
+</div>
+{% endblock %}

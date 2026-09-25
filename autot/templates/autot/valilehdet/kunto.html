@@ -1,0 +1,81 @@
+<div class="kortti">
+  <h2>Kuntoraportti</h2>
+  <p class="pieni himmea" style="margin-top:-6px">Vasemmalle myyjän ilmoittama kunto tarjousvaiheessa, oikealle oma tarkastus auton saavuttua. Erot korostetaan.</p>
+  {% url 'autot:tallenna_kunto' k.id 'tarjous' as osoite_t %}
+  {% url 'autot:tallenna_kunto' k.id 'saapuminen' as osoite_s %}
+  <form id="kunto-tarjous" method="post" action="{{ osoite_t }}" hx-post="{{ osoite_t }}" hx-target="#valilehti">{% csrf_token %}</form>
+  <form id="kunto-saapuminen" method="post" action="{{ osoite_s }}" hx-post="{{ osoite_s }}" hx-target="#valilehti">{% csrf_token %}</form>
+  <div class="taulukko-kaari">
+  <table class="vertailu">
+    <thead><tr><th></th><th>Tarjousvaihe (myyjän tieto)</th><th>Saapumistarkastus</th></tr></thead>
+    <tbody>
+    {% for rivi in kuntorivit %}
+      <tr>
+        <td class="himmea nowrap">{{ rivi.nimi }}</td>
+        <td>{% include "autot/valilehdet/_kuntokentta.html" with kentta=rivi.tarjous %}</td>
+        <td class="{% if rivi.ero %}ero{% endif %}">{% include "autot/valilehdet/_kuntokentta.html" with kentta=rivi.saapuminen %}</td>
+      </tr>
+    {% endfor %}
+    <tr><td></td>
+      <td><button class="ensisijainen" form="kunto-tarjous">Tallenna tarjoustiedot</button>{% with r=raportit|hae:"tarjous" %}{% if r %}<div class="pieni himmea">päivitetty {{ r.paivitetty|pvm }}</div>{% endif %}{% endwith %}</td>
+      <td><button class="ensisijainen" form="kunto-saapuminen">Tallenna tarkastus</button>{% with r=raportit|hae:"saapuminen" %}{% if r %}<div class="pieni himmea">päivitetty {{ r.paivitetty|pvm }}</div>{% endif %}{% endwith %}</td></tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="kortti">
+  <h2>Renkaat</h2>
+  <div class="taulukko-kaari">
+  <table>
+    <thead><tr><th>Tyyppi</th><th>Koko</th><th>Vanteet</th><th class="num">Ura (mm)</th><th>Kunto</th><th>Sijainti</th><th>Huomiot</th><th></th></tr></thead>
+    <tbody>
+    {% for r in renkaat %}
+    <tr><td><strong>{{ r.get_tyyppi_display }}</strong></td><td>{{ r.koko|default:"–" }}</td>
+      <td>{{ r.get_vanteet_display|default:"–" }}</td>
+      <td class="num">{% if r.urasyvyys_mm is not None %}<span class="{% if r.urasyvyys_mm < 4 %}myohassa{% endif %}">{{ r.urasyvyys_mm|pilkku }}</span>{% else %}–{% endif %}</td>
+      <td>{% if r.kunto %}{{ r.kunto }}/5{% else %}–{% endif %}</td>
+      <td>{{ r.get_sijainti_display|default:"–" }}</td>
+      <td>{{ r.huomiot }}</td>
+      <td class="oikea">{% url 'autot:poista_rengas' k.id r.id as poisto %}
+        <form method="post" action="{{ poisto }}" class="inline" hx-post="{{ poisto }}" hx-target="#valilehti">{% csrf_token %}<button class="linkki vaara pieni">Poista</button></form></td></tr>
+    {% empty %}<tr><td colspan="8" class="himmea">Ei rengastietoja.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <h3>Lisää rengassarja</h3>
+  {% url 'autot:lisaa_rengas' k.id as osoite %}
+  <form method="post" action="{{ osoite }}" hx-post="{{ osoite }}" hx-target="#valilehti">
+    {% csrf_token %}
+    <div class="kentat">
+      {% for kentta in rengaslomake %}{% if kentta.name == 'huomiot' %}{% include "_kentta.html" with leve=True %}{% else %}{% include "_kentta.html" %}{% endif %}{% endfor %}
+    </div>
+    <div class="lomake-alas"><button>Lisää</button></div>
+  </form>
+</div>
+
+<div class="kortti">
+  <h2>Vauriot ja huomiot</h2>
+  {% for v in vauriot %}
+  <div class="tehtava {% if v.korjattu %}tehty{% endif %}">
+    {% url 'autot:vaurio_korjattu' k.id v.id as osoite %}
+    <form method="post" action="{{ osoite }}" class="inline" hx-post="{{ osoite }}" hx-target="#valilehti">{% csrf_token %}<button class="ruksi" title="Korjattu">{% if v.korjattu %}✓{% endif %}</button></form>
+    {% if v.kuva_id %}<a href="{% url 'autot:kuva' v.kuva_id %}" target="_blank"><img class="pikkukuva" src="{% url 'autot:kuva_koko' v.kuva_id 'pieni' %}" alt=""></a>{% endif %}
+    <div class="teksti"><strong>{{ v.kohta }}</strong>{% if v.kuvaus %} · {{ v.kuvaus }}{% endif %}
+      {% if v.arvioitu_korjaus %}<div class="pieni himmea">Arvioitu korjaus {{ v.arvioitu_korjaus|euro }}</div>{% endif %}</div>
+  </div>
+  {% empty %}<p class="himmea">Ei kirjattuja vaurioita.</p>{% endfor %}
+  <h3>Lisää vaurio</h3>
+  {% url 'autot:lisaa_vaurio' k.id as osoite %}
+  <form method="post" action="{{ osoite }}" enctype="multipart/form-data" hx-post="{{ osoite }}" hx-encoding="multipart/form-data" hx-target="#valilehti">
+    {% csrf_token %}
+    <div class="kentat">
+      {% include "_kentta.html" with kentta=vauriolomake.kohta %}
+      {% include "_kentta.html" with kentta=vauriolomake.kuvaus leve=True %}
+      {% include "_kentta.html" with kentta=vauriolomake.arvioitu_korjaus %}
+      {% include "_kentta.html" with kentta=vauriolomake.kuvatiedosto %}
+    </div>
+    <datalist id="vauriokohdat">{% for x in vauriokohdat %}<option value="{{ x }}">{% endfor %}</datalist>
+    <div class="lomake-alas"><button>Lisää vaurio</button></div>
+  </form>
+</div>

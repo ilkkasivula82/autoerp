@@ -1,0 +1,16 @@
+{% if ajoneuvo %}
+<div class="huomio-laatikko" data-taytto='{{ taytto|json_attr }}'>
+  <strong>Tämä auto on ollut meillä aiemmin</strong>: {{ ajoneuvo.merkki }} {{ ajoneuvo.malli }} {{ ajoneuvo.mallitarkenne }}
+  ({{ ajoneuvo.rekisterinumero }}{% if ajoneuvo.vin %}, {{ ajoneuvo.vin }}{% endif %}).
+  {% if aktiivinen %}
+    <br><span class="myohassa">Autolla on jo avoin kierros.</span> <a href="{% url 'autot:kortti' aktiivinen.id %}">Avaa kortti →</a>
+  {% else %}
+    Tallennus avaa sille uuden kierroksen, joten aiempi historia ja varusteet säilyvät.
+    <ul style="margin:6px 0 0">
+    {% for k in kierrot %}
+      <li><a href="{% url 'autot:kortti' k.id %}">{{ k.tila|tila_nimi }}</a>{% if k.myyntipvm %} · myyty {{ k.myyntipvm|pvm }}{% endif %}{% if k.asiakas %} · {{ k.asiakas.nimi }}{% endif %}{% if k.myyntihinta %} · {{ k.myyntihinta|euro }}{% endif %}</li>
+    {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+{% endif %}

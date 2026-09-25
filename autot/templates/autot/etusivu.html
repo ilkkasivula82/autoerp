@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block otsikko %}Etusivu{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi">
+  <div><h1>Hei, {{ user.etunimi }}</h1><div class="himmea">{{ request.liike.nimi }}</div></div>
+  <a class="nappi ensisijainen" href="{% url 'autot:uusi' %}">+ Uusi auto / tarjous</a>
+</div>
+
+<div class="ruudukko r4" style="margin-bottom:16px">
+  <a class="kortti" href="{% url 'autot:lista' %}?n=tarjotut" style="color:inherit;margin:0">
+    <div class="luku-otsikko">Tarjolla, odottaa päätöstä</div><div class="luku">{{ tilamaarat|hae:"tarjottu"|default:0 }}</div></a>
+  <a class="kortti" href="{% url 'autot:lista' %}" style="color:inherit;margin:0">
+    <div class="luku-otsikko">Varastossa</div><div class="luku">{{ varastossa }}</div></a>
+  <div class="kortti" style="margin:0"><div class="luku-otsikko">Varastoon sidottu (osto + kulut)</div><div class="luku">{{ sidottu|euro }}</div></div>
+  <a class="kortti" href="{% url 'autot:lista' %}?tila=myynnissa" style="color:inherit;margin:0">
+    <div class="luku-otsikko">Myynnissä</div><div class="luku">{{ tilamaarat|hae:"myynnissa"|default:0 }}</div></a>
+</div>
+
+<div class="ruudukko r2">
+  <div class="kortti">
+    <h2>Omat tehtävät <span class="laskuri">{{ omat|length }}</span></h2>
+    {% for t in omat %}
+      {% include "autot/_tehtava.html" with nayta_auto=True %}
+    {% empty %}
+      <p class="himmea">Ei avoimia tehtäviä.</p>
+    {% endfor %}
+    <p class="pieni"><a href="{% url 'autot:tehtavat' %}">Kaikki tehtävät →</a></p>
+  </div>
+  <div class="kortti">
+    <h2>Pisimpään varastossa</h2>
+    <table>
+      {% for r in pisimmat %}
+      <tr class="klikattava" data-href="{% url 'autot:kortti' r.id %}">
+        <td><a href="{% url 'autot:kortti' r.id %}">{{ r.ajoneuvo.merkki }} {{ r.ajoneuvo.malli }}</a><div class="pieni himmea">{{ r.ajoneuvo.rekisterinumero }}</div></td>
+        <td>{% tila r.tila %}</td>
+        <td class="num"><span class="merkki {% if r.seisonut > 60 %}virhe{% elif r.seisonut > 30 %}varoitus{% endif %}">{{ r.seisonut }} pv</span></td>
+      </tr>
+      {% empty %}<tr><td class="himmea">Varasto on tyhjä.</td></tr>{% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}

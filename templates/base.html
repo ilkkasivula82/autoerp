@@ -1,0 +1,35 @@
+{% load static %}<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
+<title>{% block otsikko %}AutoERP{% endblock %} · {% if request.liike %}{{ request.liike.nimi }}{% else %}AutoERP{% endif %}</title>
+<link rel="stylesheet" href="{% static 'autot/style.css' %}">
+<script src="{% static 'autot/htmx.min.js' %}" defer></script>
+<script src="{% static 'autot/autoerp.js' %}" defer></script>
+</head>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+{% if user.is_authenticated %}
+{% with nimi=request.resolver_match.url_name %}
+<nav class="ylapalkki">
+  <span class="logo">AutoERP</span>
+  <a href="{% url 'autot:etusivu' %}" class="{% if nimi == 'etusivu' %}aktiivinen{% endif %}">Etusivu</a>
+  <a href="{% url 'autot:lista' %}" class="{% if nimi in 'lista uusi kortti' %}aktiivinen{% endif %}">Autot</a>
+  <a href="{% url 'autot:tehtavat' %}" class="{% if nimi == 'tehtavat' %}aktiivinen{% endif %}">Tehtävät</a>
+  <a href="{% url 'autot:yritykset' %}" class="{% if nimi == 'yritykset' or nimi == 'yritys' %}aktiivinen{% endif %}">Yritykset</a>
+  <a href="{% url 'autot:raportit' %}" class="{% if nimi == 'raportit' %}aktiivinen{% endif %}">Raportit</a>
+  <a href="{% url 'autot:varusteet' %}" class="{% if nimi in 'varusteet tehtavapohjat kayttajat asetukset' %}aktiivinen{% endif %}">Hallinta</a>
+  <span class="tila-vali"></span>
+  <span class="kayttaja">{{ user.nimi }} ·
+    <form method="post" action="{% url 'kirjaudu_ulos' %}" class="inline">{% csrf_token %}<button class="linkki ulos">Ulos</button></form>
+  </span>
+</nav>
+{% endwith %}
+{% endif %}
+<main>
+  <div id="ilmoitukset">{% include "_ilmoitukset.html" %}</div>
+  {% block sisalto %}{% endblock %}
+</main>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{# t = tehtävä, nayta_auto = näytetäänkö auto (listoilla) #}
+<div class="tehtava {% if t.tehty %}tehty{% endif %}" id="tehtava-{{ t.id }}">
+  <form method="post" action="{% url 'autot:kuittaa' t.id %}" class="inline"
+        hx-post="{% url 'autot:kuittaa' t.id %}" hx-target="#tehtava-{{ t.id }}" hx-swap="outerHTML">
+    {% csrf_token %}
+    <input type="hidden" name="takaisin" value="{{ request.get_full_path }}">
+    <input type="hidden" name="nayta_auto" value="{% if nayta_auto %}1{% endif %}">
+    <button class="ruksi" title="{% if t.tehty %}Palauta avoimeksi{% else %}Merkitse tehdyksi{% endif %}">{% if t.tehty %}✓{% endif %}</button>
+  </form>
+  <div class="teksti">
+    <div>{{ t.otsikko }}</div>
+    <div class="pieni himmea">
+      {% if nayta_auto %}<a href="{% url 'autot:kortti' t.kierto_id %}?v=tehtavat">{{ t.kierto.ajoneuvo.merkki }} {{ t.kierto.ajoneuvo.malli }} {{ t.kierto.ajoneuvo.rekisterinumero }}</a> · {% endif %}
+      {% if t.vastuu %}{{ t.vastuu.nimi }}{% elif t.rooli %}{{ t.rooli|valinta:ROOLIT }} (rooli){% else %}ei vastuuhenkilöä{% endif %}
+      {% if t.erapaiva %} · <span class="{% if t.myohassa %}myohassa{% endif %}">eräpäivä {{ t.erapaiva|pvm }}</span>{% endif %}
+      {% if t.tila_vaihe %} · {{ t.tila_vaihe|tila_nimi }}-vaihe{% endif %}
+      {% if t.tehty and t.tehnyt %} · tehnyt {{ t.tehnyt.nimi }} {{ t.tehty_aika|pvm }}{% endif %}
+    </div>
+    {% if t.kuvaus %}<div class="pieni">{{ t.kuvaus }}</div>{% endif %}
+  </div>
+  {% if poistettava %}
+  <form method="post" action="{% url 'autot:poista_tehtava' t.kierto_id t.id %}" class="inline" data-varmista="Poistetaanko tehtävä?"
+        hx-post="{% url 'autot:poista_tehtava' t.kierto_id t.id %}" hx-target="#valilehti" hx-confirm="Poistetaanko tehtävä?">
+    {% csrf_token %}<button class="linkki vaara pieni">Poista</button>
+  </form>
+  {% endif %}
+</div>

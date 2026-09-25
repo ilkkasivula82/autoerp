@@ -1,0 +1,13 @@
+{% url 'autot:tallenna_ajoneuvo' k.id as osoite %}
+<form method="post" action="{{ osoite }}" hx-post="{{ osoite }}" hx-target="#valilehti">
+{% csrf_token %}
+<div class="kortti">
+  <h2>Ajoneuvon tiedot</h2>
+  <p class="pieni himmea" style="margin-top:-6px">Nämä tiedot kuuluvat ajoneuvolle ja säilyvät, jos auto palaa meille myöhemmin.</p>
+  {% if lomake.non_field_errors %}<div class="ilmoitus virhe">{{ lomake.non_field_errors|join:" " }}</div>{% endif %}
+  <div class="kentat">
+    {% for kentta in lomake %}{% include "_kentta.html" %}{% endfor %}
+  </div>
+  <div class="lomake-alas"><button class="ensisijainen">Tallenna</button></div>
+</div>
+</form>

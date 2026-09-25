@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block otsikko %}{{ a.merkki }} {{ a.malli }} {{ a.rekisterinumero }}{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi">
+  <div style="display:flex;gap:14px;align-items:center">
+    {% if paakuva %}<img src="{% url 'autot:kuva_koko' paakuva.id 'pieni' %}" style="width:110px;height:76px;object-fit:cover;border-radius:8px" alt="">{% endif %}
+    <div>
+      <h1>{{ a.merkki }} {{ a.malli }} <span class="himmea" style="font-weight:400">{{ a.mallitarkenne }}</span></h1>
+      <div class="himmea">
+        <strong style="color:var(--teksti)">{{ a.rekisterinumero|default:"ei rekisteriä" }}</strong>
+        {% if a.vuosimalli %} · {{ a.vuosimalli }}{% endif %}
+        {% if k.km %} · {{ k.km|km }} km{% endif %}
+        {% if a.kayttovoima %} · {{ koodinimet.kayttovoima|hae:a.kayttovoima|default:a.kayttovoima }}{% endif %}
+        {% if a.vaihteisto %} · {{ koodinimet.vaihteisto|hae:a.vaihteisto|default:a.vaihteisto }}{% endif %}
+        {% if kierroksia > 1 %} · <a href="?v=historia" class="merkki">{{ kierroksia }} kierrosta</a>{% endif %}
+      </div>
+    </div>
+  </div>
+  {% tila k.tila iso=True %}
+</div>
+
+{% include "autot/_valilehtipalkki.html" %}
+
+<div id="valilehti">
+  {% include valilehti_pohja %}
+</div>
+{% endblock %}

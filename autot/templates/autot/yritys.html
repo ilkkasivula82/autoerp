@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block otsikko %}{{ y.nimi }}{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi"><div><h1>{{ y.nimi }}</h1><div class="himmea">{{ y.get_tyyppi_display }} {{ y.y_tunnus }} · {{ y.yhteyshenkilo }} {{ y.puhelin }} {{ y.sahkoposti }}</div></div>
+<a class="nappi" href="{% url 'autot:yritykset' %}?muokkaa={{ y.id }}">Muokkaa</a></div>
+<div class="ruudukko r4" style="margin-bottom:16px">
+  <div class="kortti" style="margin:0"><div class="luku-otsikko">Ostettu heiltä</div><div class="luku">{{ ostettu }}</div></div>
+  <div class="kortti" style="margin:0"><div class="luku-otsikko">Myyty heille</div><div class="luku">{{ myyty }}</div></div>
+  <div class="kortti" style="margin:0"><div class="luku-otsikko">Kate heiltä ostetuista (myydyt)</div><div class="luku">{{ kate_ostetuista|euro }}</div></div>
+</div>
+<div class="kortti" style="padding:0"><div class="taulukko-kaari"><table>
+  <thead><tr><th>Auto</th><th>Suunta</th><th>Tila</th><th class="num">Ostohinta</th><th class="num">Myyntihinta</th><th class="num">Kate</th><th>Maksu</th></tr></thead>
+  {% for r in kaupat %}
+  <tr class="klikattava" data-href="{% url 'autot:kortti' r.id %}">
+    <td><a href="{% url 'autot:kortti' r.id %}" style="color:inherit">{{ r.ajoneuvo.merkki }} {{ r.ajoneuvo.malli }}</a> <span class="himmea pieni">{{ r.ajoneuvo.rekisterinumero }}</span></td>
+    <td>{% if r.suunta == 'osto' %}Ostettu heiltä{% else %}Myyty heille{% endif %}</td>
+    <td>{% tila r.tila %}</td>
+    <td class="num">{{ r.ostohinta|euro }}</td><td class="num">{{ r.myyntihinta|euro }}</td>
+    <td class="num">{% if r.kate_ and not r.kate_.arvio %}{{ r.kate_.kate|euro }}{% else %}–{% endif %}</td>
+    <td>{% if r.suunta == 'myynti' and r.myyntihinta %}{% if r.maksettu_pvm %}<span class="merkki">maksettu</span>{% else %}<span class="merkki varoitus">avoin</span>{% endif %}{% endif %}</td>
+  </tr>
+  {% empty %}<tr><td colspan="7" class="himmea">Ei kauppoja.</td></tr>{% endfor %}
+</table></div></div>
+{% endblock %}
