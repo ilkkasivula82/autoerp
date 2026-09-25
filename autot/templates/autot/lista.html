@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block otsikko %}Autot{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi">
+  <h1>Autot</h1>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <form method="get" style="display:flex;gap:6px">
+      <input type="hidden" name="n" value="{{ nakyma }}">
+      <input type="search" name="q" value="{{ haku }}" placeholder="Rekisteri, VIN tai malli" style="width:220px"
+             hx-get="{% url 'autot:lista' %}" hx-trigger="input changed delay:300ms, search" hx-include="closest form"
+             hx-target="#autolista" hx-select="#autolista" hx-swap="outerHTML" hx-push-url="true">
+      <button>Hae</button>
+    </form>
+    <a class="nappi ensisijainen" href="{% url 'autot:uusi' %}">+ Uusi auto / tarjous</a>
+  </div>
+</div>
+
+<div class="valilehdet">
+  {% for avain, nimi in nakymat %}
+  <a href="?n={{ avain }}{% if haku %}&q={{ haku|urlencode }}{% endif %}" class="{% if nakyma == avain and not tila %}aktiivinen{% endif %}">{{ nimi }}</a>
+  {% endfor %}
+  {% if tila %}<a class="aktiivinen">{{ tila|tila_nimi }}</a>{% endif %}
+</div>
+
+<div class="kortti" style="padding:0" id="autolista">
+<div class="taulukko-kaari">
+<table>
+  <thead><tr>
+    <th></th><th>Auto</th><th>Tila</th><th class="num piilota-mobiili">Km</th>
+    {% if nakyma == 'tarjotut' %}
+      <th>Tarjoaja</th><th class="num">Pyydetty hinta</th><th class="num">Tarjolla</th>
+    {% else %}
+      <th class="num">Ostohinta</th><th class="num piilota-mobiili">Kulut</th>
+      <th class="num">{% if nakyma == 'myydyt' %}Myyntihinta{% else %}Pyyntihinta{% endif %}</th>
+      <th class="num">Kate</th><th class="num">Päiviä</th>
+    {% endif %}
+    <th class="num piilota-mobiili">Tehtäviä</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rivit %}
+  <tr class="klikattava" data-href="{% url 'autot:kortti' r.id %}">
+    <td>{% if r.kuva_id %}<img class="pikkukuva" loading="lazy" src="{% url 'autot:kuva_koko' r.kuva_id 'pieni' %}" alt="">{% else %}<div class="pikkukuva"></div>{% endif %}</td>
+    <td><a href="{% url 'autot:kortti' r.id %}" style="color:inherit"><strong>{{ r.ajoneuvo.merkki }} {{ r.ajoneuvo.malli }}</strong></a> {{ r.ajoneuvo.mallitarkenne }}
+      <div class="pieni himmea">{{ r.ajoneuvo.rekisterinumero|default:"ei rekisteriä" }} · {{ r.ajoneuvo.vuosimalli|default:"" }}
+        {% if r.ajoneuvo.kayttovoima %}· {{ koodinimet.kayttovoima|hae:r.ajoneuvo.kayttovoima|default:r.ajoneuvo.kayttovoima }}{% endif %}
+        {% if r.kierroksia > 1 %}· <span class="merkki" title="Auto on ollut meillä aiemmin">{{ r.kierroksia }}. kierros</span>{% endif %}</div></td>
+    <td>{% tila r.tila %}</td>
+    <td class="num piilota-mobiili">{{ r.km|km }}</td>
+    {% if nakyma == 'tarjotut' %}
+      <td>{{ r.toimittaja.nimi|default:"–" }}<div class="pieni himmea">{{ r.ostokanava|valinta:OSTOKANAVAT }}</div></td>
+      <td class="num">{{ r.tarjottu_hinta|euro }}</td>
+      <td class="num">{{ r.tilassa|default_if_none:"–" }} pv</td>
+    {% else %}
+      <td class="num">{{ r.ostohinta|euro }}</td>
+      <td class="num piilota-mobiili">{% if r.kulut_yht %}{{ r.kulut_yht|euro }}{% else %}–{% endif %}</td>
+      <td class="num">{% if r.myyntihinta is not None %}{{ r.myyntihinta|euro }}{% else %}{{ r.pyyntihinta|euro }}{% endif %}</td>
+      <td class="num">{% if r.kate_ %}<span class="{% if r.kate_.kate >= 0 %}positiivinen{% else %}negatiivinen{% endif %}">{{ r.kate_.kate|euro }}</span>{% if r.kate_.arvio %}<div class="pieni himmea">arvio</div>{% endif %}{% else %}–{% endif %}</td>
+      <td class="num">{% if r.varastossa is not None %}<span class="merkki {% if r.varastossa > 60 %}virhe{% elif r.varastossa > 30 %}varoitus{% endif %}">{{ r.varastossa }}</span>{% else %}–{% endif %}</td>
+    {% endif %}
+    <td class="num piilota-mobiili">{{ r.avoimet|default:"" }}</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="10" class="himmea" style="padding:24px">Ei autoja tässä näkymässä.</td></tr>
+  {% endfor %}
+  </tbody>
+  {% if rivit and nakyma != 'tarjotut' %}
+  <tfoot><tr>
+    <td></td><td>{{ rivit|length }} autoa</td><td></td><td class="piilota-mobiili"></td>
+    <td class="num">{{ yht.osto|euro }}</td><td class="num piilota-mobiili">{{ yht.kulut|euro }}</td><td></td>
+    <td class="num">{{ yht.kate|euro }}</td><td></td><td class="piilota-mobiili"></td>
+  </tr></tfoot>
+  {% endif %}
+</table>
+</div>
+</div>
+{% endblock %}

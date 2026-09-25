@@ -1,0 +1,19 @@
+<div class="kortti">
+  <h2>Tehtävät</h2>
+  {% for t in tehtavat %}
+    {% include "autot/_tehtava.html" with nayta_auto=False poistettava=True %}
+  {% empty %}<p class="himmea">Ei tehtäviä.</p>{% endfor %}
+  <h3>Lisää tehtävä</h3>
+  {% url 'autot:lisaa_tehtava' k.id as osoite %}
+  <form method="post" action="{{ osoite }}" hx-post="{{ osoite }}" hx-target="#valilehti">
+    {% csrf_token %}
+    <div class="kentat">
+      {% include "_kentta.html" with kentta=lomake.otsikko leve=True %}
+      {% include "_kentta.html" with kentta=lomake.vastuu %}
+      {% include "_kentta.html" with kentta=lomake.erapaiva %}
+      {% include "_kentta.html" with kentta=lomake.kuvaus leve=True %}
+    </div>
+    <div class="lomake-alas"><button class="ensisijainen">Lisää</button></div>
+  </form>
+  <p class="pieni himmea">Vaiheiden vakiotehtävät syntyvät automaattisesti <a href="{% url 'autot:tehtavapohjat' %}">tehtäväpohjista</a>.</p>
+</div>

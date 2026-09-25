@@ -1,0 +1,1 @@
+{% for viesti in messages %}<div class="ilmoitus {% if viesti.tags == 'error' %}virhe{% elif viesti.tags == 'success' %}ok{% else %}info{% endif %}">{{ viesti }}</div>{% endfor %}

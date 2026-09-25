@@ -1,0 +1,44 @@
+{% if aiemmat %}
+<div class="kortti">
+  <h2>Muut kierrokset tällä autolla</h2>
+  <p class="pieni himmea" style="margin-top:-6px">Sama ajoneuvo on kulkenut liikkeen kautta useammin kuin kerran.</p>
+  <div class="taulukko-kaari">
+  <table>
+    <thead><tr><th>Kierros</th><th>Tila</th><th class="num">Km</th><th>Ostettu</th><th class="num">Ostohinta</th><th>Myyty</th><th class="num">Myyntihinta</th></tr></thead>
+    {% for a_ in aiemmat %}
+    <tr class="klikattava" data-href="{% url 'autot:kortti' a_.id %}">
+      <td><a href="{% url 'autot:kortti' a_.id %}">#{{ a_.id }}</a></td><td>{% tila a_.tila %}</td>
+      <td class="num">{{ a_.km|km }}</td>
+      <td>{{ a_.ostopvm|pvm }}{% if a_.toimittaja %}<div class="pieni himmea">{{ a_.toimittaja.nimi }}</div>{% endif %}</td>
+      <td class="num">{{ a_.ostohinta|euro }}</td>
+      <td>{{ a_.myyntipvm|pvm }}{% if a_.asiakas %}<div class="pieni himmea">{{ a_.asiakas.nimi }}</div>{% endif %}</td>
+      <td class="num">{{ a_.myyntihinta|euro }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+<div class="ruudukko r2">
+  <div class="kortti">
+    <h2>Vaiheet</h2>
+    <table>
+      <thead><tr><th>Tila</th><th>Alkoi</th><th class="num">Kesto</th><th>Kuka</th></tr></thead>
+      {% for h, kesto in vaiheet %}
+      <tr><td>{% tila h.uusi_tila %}</td>
+        <td>{{ h.aika|pvm }}</td><td class="num">{{ kesto }} pv</td><td class="pieni">{{ h.kayttaja.nimi|default:"" }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  <div class="kortti">
+    <h2>Muutosloki</h2>
+    <div class="taulukko-kaari" style="max-height:420px;overflow-y:auto">
+    <table>
+      {% for l in loki %}
+      <tr><td class="pieni nowrap himmea">{{ l.aika|pvm }}<br>{{ l.kayttaja.nimi|default:"" }}</td>
+        <td class="pieni"><strong>{{ l.kentta }}</strong>: {{ l.vanha|default:"–" }} → {{ l.uusi|default:"–" }}</td></tr>
+      {% empty %}<tr><td class="himmea">Ei muutoksia.</td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block otsikko %}Asetukset{% endblock %}
+{% block sisalto %}
+<h1>Hallinta</h1>
+{% include "autot/_hallinta_nav.html" %}
+<div class="ruudukko r2">
+<div class="kortti"><h2>Liike</h2>
+  <form method="post">{% csrf_token %}<input type="hidden" name="toiminto" value="liike">
+    <div style="display:grid;gap:10px">
+      {% include "_kentta.html" with kentta=liikelomake.nimi %}
+      {% include "_kentta.html" with kentta=liikelomake.y_tunnus %}
+      {% include "_kentta.html" with kentta=liikelomake.alv_prosentti %}
+    </div>
+    <div class="lomake-alas"><button class="ensisijainen">Tallenna</button></div></form>
+</div>
+<div class="kortti"><h2>Koodistot</h2>
+  <p class="pieni himmea">Käyttövoima, vaihteisto ja korimalli. Koodit kannattaa pitää samoina kuin Traficomin datassa, jotta rekisterihaku täyttää ne suoraan.</p>
+  {% for ryhma, nimi, koodit in koodiryhmat %}
+    <h3>{{ nimi }}</h3>
+    <div class="pieni">{% for k in koodit %}<span class="merkki" style="margin:2px">{{ k.koodi }} · {{ k.nimi }}</span>{% endfor %}</div>
+    <form method="post" style="display:flex;gap:6px;margin-top:6px">{% csrf_token %}<input type="hidden" name="toiminto" value="koodi"><input type="hidden" name="ryhma" value="{{ ryhma }}">
+      <input name="koodi" placeholder="Koodi" style="width:90px" required aria-label="Koodi"><input name="nimi" placeholder="Nimi" required aria-label="Nimi"><button class="pieni">Lisää</button></form>
+  {% endfor %}
+</div>
+</div>
+{% endblock %}

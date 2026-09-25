@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block otsikko %}Raportit{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi"><h1>Raportit</h1>
+  <form method="get" style="display:flex;gap:8px;align-items:end">
+    <div><label for="alku">Alku</label><input type="date" id="alku" name="alku" value="{{ alku|date:'Y-m-d' }}"></div>
+    <div><label for="loppu">Loppu</label><input type="date" id="loppu" name="loppu" value="{{ loppu|date:'Y-m-d' }}"></div>
+    <button>Näytä</button>
+  </form>
+</div>
+
+<div class="ruudukko r4" style="margin-bottom:16px">
+  <div class="kortti" style="margin:0"><div class="luku-otsikko">Myytyjä autoja</div><div class="luku">{{ yht.n|default:0 }}</div></div>
+  <div class="kortti" style="margin:0"><div class="luku-otsikko">Kate yhteensä</div><div class="luku">{{ yht.kate|default:0|euro }}</div></div>
+  <div class="kortti" style="margin:0"><div class="luku-otsikko">Kate / auto</div><div class="luku">{{ yht.ka_kate|default:0|euro }}</div></div>
+  <div class="kortti" style="margin:0"><div class="luku-otsikko">Kiertoaika keskimäärin</div><div class="luku">{% if yht.ka_paivat is not None and yht %}{{ yht.ka_paivat }} pv{% else %}–{% endif %}</div></div>
+</div>
+
+<div class="ruudukko r2">
+{% for otsikko, sarake, data, leve in taulut %}
+<div class="kortti" style="padding:0{% if leve %};grid-column:1/-1{% endif %}">
+  <h2 style="padding:16px 16px 0">{{ otsikko }}</h2>
+  <div class="taulukko-kaari"><table>
+    <thead><tr><th>{{ sarake }}</th><th class="num">Autoja</th><th class="num">Nettomyynti</th><th class="num">Kate</th><th class="num">Kate / auto</th><th class="num">Kiertoaika ka.</th><th class="num">Kate / päivä</th><th class="num">Jälkikulut</th></tr></thead>
+    {% for o in data %}
+    <tr><td>{{ o.nimi }}</td><td class="num">{{ o.n }}</td><td class="num">{{ o.myynti|euro }}</td>
+      <td class="num {% if o.kate < 0 %}negatiivinen{% endif %}">{{ o.kate|euro }}</td><td class="num">{{ o.ka_kate|euro }}</td>
+      <td class="num">{% if o.ka_paivat is not None %}{{ o.ka_paivat }} pv{% else %}–{% endif %}</td>
+      <td class="num">{% if o.kate_per_pv is not None %}{{ o.kate_per_pv|euro }}{% else %}–{% endif %}</td>
+      <td class="num">{% if o.jalki %}{{ o.jalki|euro }}{% else %}–{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="8" class="himmea">Ei myyntejä valitulla jaksolla.</td></tr>{% endfor %}
+  </table></div>
+</div>
+{% endfor %}
+</div>
+
+<div class="ruudukko r2">
+  <div class="kortti"><h2>Varaston ikä (nyt)</h2>
+    <table><thead><tr><th>Ikä</th><th class="num">Autoja</th><th class="num">Sidottu pääoma</th></tr></thead>
+    {% for i in ika %}<tr><td>{{ i.nimi }}</td><td class="num">{{ i.n }}</td><td class="num">{{ i.sidottu|euro }}</td></tr>{% endfor %}
+    </table></div>
+  <div class="kortti"><h2>Myyntisaatavat (maksamatta)</h2>
+    <table><thead><tr><th>Ostaja</th><th>Auto</th><th class="num">Summa</th><th class="num">Ikä</th></tr></thead>
+    {% for s in saatavat %}
+    <tr class="klikattava" data-href="{% url 'autot:kortti' s.id %}">
+      <td>{{ s.asiakas.nimi|default:"–" }}</td><td class="pieni"><a href="{% url 'autot:kortti' s.id %}">{{ s.ajoneuvo.merkki }} {{ s.ajoneuvo.malli }} {{ s.ajoneuvo.rekisterinumero }}</a>{% if s.laskunumero %} · lasku {{ s.laskunumero }}{% endif %}</td>
+      <td class="num">{{ s.verollinen|euro }}</td><td class="num"><span class="merkki {% if s.ika > 14 %}virhe{% endif %}">{{ s.ika }} pv</span></td></tr>
+    {% empty %}<tr><td colspan="4" class="himmea">Ei avoimia saatavia.</td></tr>{% endfor %}
+    </table></div>
+</div>
+
+<div class="kortti" style="padding:0">
+  <h2 style="padding:16px 16px 0">Myydyt autot</h2>
+  <div class="taulukko-kaari"><table>
+    <thead><tr><th>Myyty</th><th>Auto</th><th>Toimittaja → Ostaja</th><th class="num">Osto</th><th class="num">Kulut</th><th class="num">Nettomyynti</th><th class="num">Kate</th><th class="num">Kierto</th></tr></thead>
+    {% for r in rivit %}
+    <tr class="klikattava" data-href="{% url 'autot:kortti' r.id %}">
+      <td class="nowrap">{{ r.myyntipvm|pvm }}</td><td><a href="{% url 'autot:kortti' r.id %}" style="color:inherit">{{ r.ajoneuvo.merkki }} {{ r.ajoneuvo.malli }}</a> <span class="pieni himmea">{{ r.ajoneuvo.rekisterinumero }}</span></td>
+      <td class="pieni">{{ r.toimittaja.nimi|default:"–" }} → {{ r.asiakas.nimi|default:"–" }}</td>
+      <td class="num">{{ r.kate_.osto|euro }}</td><td class="num">{{ r.kate_.kulut|euro }}{% if r.kate_.jalkikulut %}<div class="pieni negatiivinen">sis. jälkikuluja {{ r.kate_.jalkikulut|euro }}</div>{% endif %}</td>
+      <td class="num">{{ r.kate_.nettomyynti|euro }}</td>
+      <td class="num {% if r.kate_.kate < 0 %}negatiivinen{% else %}positiivinen{% endif %}">{{ r.kate_.kate|euro }}</td>
+      <td class="num">{% if r.kiertoaika is not None %}{{ r.kiertoaika }} pv{% else %}–{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="8" class="himmea">Ei myyntejä valitulla jaksolla.</td></tr>{% endfor %}
+  </table></div>
+</div>
+{% endblock %}

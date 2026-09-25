@@ -1,0 +1,37 @@
+<div class="kortti">
+  <h2>Lisää kuvia</h2>
+  {% url 'autot:lataa_kuvat' k.id as osoite %}
+  <form method="post" action="{{ osoite }}" enctype="multipart/form-data" class="latausalue"
+        hx-post="{{ osoite }}" hx-encoding="multipart/form-data" hx-target="#valilehti" hx-disabled-elt="find button">
+    {% csrf_token %}
+    <div class="kentat">
+      {% include "_kentta.html" with kentta=latauslomake.tyyppi %}
+      <div class="leveä"><label for="kuvat">Kuvat (voit valita useita tai ottaa puhelimella)</label><input type="file" id="kuvat" name="kuvat" accept="image/*" multiple required></div>
+    </div>
+    <div class="lomake-alas"><button class="ensisijainen">Lataa</button><span class="htmx-indicator pieni himmea">Ladataan…</span></div>
+  </form>
+</div>
+{% for otsikko, ryhma in kuvaryhmat %}
+  <div class="kortti">
+    <h2>{{ otsikko }} <span class="laskuri">{{ ryhma|length }}</span></h2>
+    <div class="kuvaruudukko">
+    {% for kv in ryhma %}
+      <div class="kuvaruutu {% if kv.paakuva %}paa{% endif %}">
+        <a href="{% url 'autot:kuva' kv.id %}" target="_blank"><img loading="lazy" src="{% url 'autot:kuva_koko' kv.id 'pieni' %}" alt=""></a>
+        <div class="toiminnot">
+          {% if kv.paakuva %}<span class="merkki">Pääkuva</span>{% else %}
+          {% url 'autot:aseta_paakuva' kv.id as o %}<form method="post" action="{{ o }}" class="inline" hx-post="{{ o }}" hx-target="#valilehti">{% csrf_token %}<button class="linkki pieni" title="Aseta pääkuvaksi">★</button></form>{% endif %}
+          {% url 'autot:siirra_kuva' kv.id 'ylos' as o %}<form method="post" action="{{ o }}" class="inline" hx-post="{{ o }}" hx-target="#valilehti">{% csrf_token %}<button class="linkki pieni" title="Siirrä aiemmaksi">←</button></form>
+          {% url 'autot:siirra_kuva' kv.id 'alas' as o %}<form method="post" action="{{ o }}" class="inline" hx-post="{{ o }}" hx-target="#valilehti">{% csrf_token %}<button class="linkki pieni" title="Siirrä myöhemmäksi">→</button></form>
+          {% url 'autot:vaihda_kuvatyyppi' kv.id as o %}<form method="post" action="{{ o }}" class="inline" hx-post="{{ o }}" hx-target="#valilehti" hx-trigger="change">
+            {% csrf_token %}<select name="tyyppi" aria-label="Kuvatyyppi">{% for a_, n in kuvatyypit %}<option value="{{ a_ }}" {% if a_ == kv.tyyppi %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+            <noscript><button class="linkki pieni">OK</button></noscript></form>
+          {% url 'autot:poista_kuva' kv.id as o %}<form method="post" action="{{ o }}" class="inline" data-varmista="Poistetaanko kuva?" hx-post="{{ o }}" hx-target="#valilehti" hx-confirm="Poistetaanko kuva?">{% csrf_token %}<button class="linkki vaara pieni" title="Poista">✕</button></form>
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+  </div>
+{% empty %}
+<p class="himmea">Ei vielä kuvia.</p>
+{% endfor %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block otsikko %}Yritykset{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi"><div><h1>Yritykset</h1><div class="himmea">Toimittajat ja asiakkaat. Sama yritys voi olla kumpaakin.</div></div></div>
+<div class="ruudukko" style="grid-template-columns: minmax(0,2fr) minmax(280px,1fr)">
+<div class="kortti" style="padding:0">
+  <div class="taulukko-kaari"><table>
+    <thead><tr><th>Nimi</th><th>Tyyppi</th><th class="num">Ostettu</th><th class="num">Myyty</th><th class="num">Maksamatta</th><th></th></tr></thead>
+    {% for y in rivit %}
+    <tr><td><a href="{% url 'autot:yritys' y.id %}"><strong>{{ y.nimi }}</strong></a>
+      <div class="pieni himmea">{{ y.y_tunnus }} {{ y.yhteyshenkilo }} {{ y.puhelin }}</div></td>
+      <td>{{ y.get_tyyppi_display }}</td>
+      <td class="num">{{ y.ostettu_n|default:"" }}</td><td class="num">{{ y.myyty_n|default:"" }}</td>
+      <td class="num">{% if y.maksamatta_n %}<span class="merkki varoitus">{{ y.maksamatta_n }}</span>{% endif %}</td>
+      <td class="oikea"><a href="?muokkaa={{ y.id }}">Muokkaa</a></td></tr>
+    {% empty %}<tr><td colspan="6" class="himmea">Ei yrityksiä.</td></tr>{% endfor %}
+  </table></div>
+</div>
+<div class="kortti">
+  <h2>{% if m %}Muokkaa yritystä{% else %}Uusi yritys{% endif %}</h2>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="id" value="{{ m.id|default:'' }}">
+    <div style="display:grid;gap:10px">
+      {% for kentta in lomake %}{% include "_kentta.html" %}{% endfor %}
+    </div>
+    <div class="lomake-alas"><button class="ensisijainen">Tallenna</button>{% if m %}<a class="nappi" href="{% url 'autot:yritykset' %}">Peruuta</a>{% endif %}</div>
+  </form>
+</div>
+</div>
+{% endblock %}

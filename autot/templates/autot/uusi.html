@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block otsikko %}Uusi auto{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi"><div><h1>Uusi auto / tarjous</h1>
+<div class="himmea">Kirjaa auto, joka on tarjottu meille. Ostopäätös tehdään kortilla. Jos auto on jo ostettu, valitse "Ostettu heti".</div></div></div>
+
+<form method="post" novalidate>
+{% csrf_token %}
+{% if lomake.non_field_errors %}<div class="ilmoitus virhe">{{ lomake.non_field_errors|join:" " }}</div>{% endif %}
+<div id="aiempi"></div>
+
+<div class="kortti">
+  <h2>Tunnistetiedot</h2>
+  <div class="kentat">
+    <div hx-get="{% url 'autot:tarkista' %}" hx-trigger="change from:#id_rekisterinumero, change from:#id_vin"
+         hx-include="#id_rekisterinumero, #id_vin" hx-target="#aiempi" style="display:contents">
+      {% include "_kentta.html" with kentta=lomake.rekisterinumero %}
+      {% include "_kentta.html" with kentta=lomake.vin %}
+    </div>
+    {% include "_kentta.html" with kentta=lomake.merkki %}
+    {% include "_kentta.html" with kentta=lomake.malli %}
+    {% include "_kentta.html" with kentta=lomake.mallitarkenne %}
+    {% include "_kentta.html" with kentta=lomake.vuosimalli %}
+    {% include "_kentta.html" with kentta=lomake.km %}
+    {% include "_kentta.html" with kentta=lomake.kayttovoima %}
+    {% include "_kentta.html" with kentta=lomake.vaihteisto %}
+    {% include "_kentta.html" with kentta=lomake.korimalli %}
+  </div>
+  <p class="pieni himmea" style="margin-bottom:0">Rekisterihaku Traficomista lisätään myöhemmin. Silloin nämä tiedot täyttyvät rekisterinumerolla.</p>
+</div>
+
+<div class="kortti">
+  <h2>Tarjous</h2>
+  <div class="kentat">
+    <div>{% include "_kentta.html" with kentta=lomake.toimittaja %}
+      <div class="pieni"><a href="{% url 'autot:yritykset' %}" target="_blank">+ uusi yritys</a></div></div>
+    {% include "_kentta.html" with kentta=lomake.ostokanava %}
+    {% include "_kentta.html" with kentta=lomake.tarjottu_hinta %}
+    {% include "_kentta.html" with kentta=lomake.alv_kasittely %}
+    {% include "_kentta.html" with kentta=lomake.huomiot leve=True %}
+    <div class="leveä"><label style="display:flex;gap:8px;align-items:center;color:inherit">{{ lomake.heti_ostettu }} {{ lomake.heti_ostettu.label }}</label></div>
+    {% include "_kentta.html" with kentta=lomake.ostohinta piilo="ostohinta-kentta" %}
+  </div>
+</div>
+
+<div class="lomake-alas"><button class="ensisijainen">Tallenna</button><a class="nappi" href="{% url 'autot:lista' %}">Peruuta</a></div>
+</form>
+{% endblock %}
