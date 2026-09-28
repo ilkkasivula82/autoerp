@@ -1,0 +1,10 @@
+{% with nimi=request.resolver_match.url_name %}
+<div class="valilehdet">
+  <a href="{% url 'autot:varusteet' %}" class="{% if nimi == 'varusteet' %}aktiivinen{% endif %}">Varustekatalogi</a>
+  <a href="{% url 'autot:tehtavapohjat' %}" class="{% if nimi == 'tehtavapohjat' %}aktiivinen{% endif %}">Tehtäväpohjat</a>
+  {% if user.on_admin %}
+  <a href="{% url 'autot:kayttajat' %}" class="{% if nimi == 'kayttajat' %}aktiivinen{% endif %}">Käyttäjät</a>
+  <a href="{% url 'autot:asetukset' %}" class="{% if nimi == 'asetukset' %}aktiivinen{% endif %}">Asetukset ja koodistot</a>
+  {% endif %}
+</div>
+{% endwith %}

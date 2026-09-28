@@ -1,0 +1,6 @@
+<div class="valilehdet" id="valilehdet"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% for avain, nimi in valilehdet %}
+  <a href="?v={{ avain }}" hx-get="{% url 'autot:valilehti' k.id avain %}" hx-target="#valilehti" hx-push-url="?v={{ avain }}"
+     class="{% if valilehti == avain %}aktiivinen{% endif %}">{{ nimi }}{% with n=laskurit|hae:avain %}{% if n %}<span class="laskuri">{{ n }}</span>{% endif %}{% endwith %}</a>
+  {% endfor %}
+</div>

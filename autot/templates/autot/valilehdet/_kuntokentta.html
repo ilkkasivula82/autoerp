@@ -1,0 +1,4 @@
+{% if kentta.widget_type == 'radioselect' %}
+<div class="asteikko">{% for r in kentta %}<label>{{ r.tag }}<span>{{ r.choice_label }}</span></label>{% endfor %}</div>
+{% else %}{{ kentta }}{% endif %}
+{% if kentta.errors %}<ul class="errorlist">{% for v in kentta.errors %}<li>{{ v }}</li>{% endfor %}</ul>{% endif %}

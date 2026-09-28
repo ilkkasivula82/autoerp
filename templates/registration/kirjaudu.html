@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block otsikko %}Kirjaudu{% endblock %}
+{% block sisalto %}
+<div class="kortti kirjautuminen">
+  <h1>AutoERP</h1>
+  <p class="himmea">Kirjaudu sisään</p>
+  <form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="ilmoitus virhe">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+    <div style="margin-bottom:12px"><label for="id_username">Sähköposti</label>{{ form.username }}</div>
+    <div style="margin-bottom:16px"><label for="id_password">Salasana</label>{{ form.password }}</div>
+    <input type="hidden" name="next" value="{{ next }}">
+    <button class="ensisijainen" style="width:100%;justify-content:center">Kirjaudu</button>
+  </form>
+</div>
+{% endblock %}

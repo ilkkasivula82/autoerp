@@ -1,0 +1,35 @@
+<div class="kortti">
+  <div class="otsikkorivi" style="margin-bottom:8px">
+    <h2 style="margin:0">Varusteet <span class="laskuri" id="valitut-n">{{ valitut|length }}</span></h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="varustehaku" type="search" placeholder="Hae varustetta…" style="width:200px" aria-label="Hae varustetta">
+      <label style="display:flex;gap:6px;align-items:center;margin:0;color:inherit"><input type="checkbox" id="vain-valitut"> Vain valitut</label>
+    </div>
+  </div>
+  {% url 'autot:tallenna_varusteet' k.id as osoite %}
+  <form method="post" action="{{ osoite }}" hx-post="{{ osoite }}" hx-target="#valilehti">
+    {% csrf_token %}
+    {% for kat, lista in varustekategoriat %}
+      <div class="varusteryhma">
+        <h3>{{ kat.nimi }}</h3>
+        <div class="varustelista">
+        {% for v in lista %}
+          <label data-nimi="{{ v.nimi|lower }}"><input type="checkbox" name="varuste" value="{{ v.id }}" {% if v.id in valitut %}checked{% endif %}> {{ v.nimi }}</label>
+        {% endfor %}
+        </div>
+      </div>
+    {% empty %}<p class="himmea">Varustekatalogi on tyhjä.</p>{% endfor %}
+    <div class="lomake-alas" style="position:sticky;bottom:0;background:#fff;padding:10px 0"><button class="ensisijainen">Tallenna varusteet</button>
+      <a class="nappi" href="{% url 'autot:varusteet' %}">Muokkaa varustekatalogia</a></div>
+  </form>
+  {% if muut_kierrot %}
+  <h3>Kopioi varusteet toisesta autosta</h3>
+  {% url 'autot:kopioi_varusteet' k.id as osoite %}
+  <form method="post" action="{{ osoite }}" hx-post="{{ osoite }}" hx-target="#valilehti" style="display:flex;gap:8px;flex-wrap:wrap">
+    {% csrf_token %}
+    <select name="lahde" style="max-width:380px" aria-label="Lähdeauto">{% for m in muut_kierrot %}<option value="{{ m.id }}">{{ m.ajoneuvo.merkki }} {{ m.ajoneuvo.malli }} {{ m.ajoneuvo.rekisterinumero }}</option>{% endfor %}</select>
+    <button>Kopioi</button>
+  </form>
+  <p class="pieni himmea">Näytetään saman merkin autot. Kopiointi lisää varusteet nykyisten päälle.</p>
+  {% endif %}
+</div>

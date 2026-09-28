@@ -1,0 +1,6 @@
+{# kentta = lomakkeen kenttä, leve = koko rivin levyinen #}
+<div class="{% if leve %}leveä {% endif %}{% if kentta.errors %}kentta-virhe{% endif %}"{% if piilo %} id="{{ piilo }}"{% endif %}>
+  <label for="{{ kentta.id_for_label }}">{{ kentta.label }}{% if kentta.field.required %} *{% endif %}{% if lisa %} <span class="pieni">{{ lisa }}</span>{% endif %}</label>
+  {{ kentta }}
+  {% if kentta.errors %}<ul class="errorlist">{% for v in kentta.errors %}<li>{{ v }}</li>{% endfor %}</ul>{% endif %}
+</div>

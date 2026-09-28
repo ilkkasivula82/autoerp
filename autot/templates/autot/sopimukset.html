@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block otsikko %}Sopimukset{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi"><h1>Sopimukset</h1></div>
+<div class="valilehdet">
+  <a href="?" class="{% if not tyyppi %}aktiivinen{% endif %}">Kaikki</a>
+  {% for avain, nimi in TYYPIT %}<a href="?tyyppi={{ avain }}" class="{% if tyyppi == avain %}aktiivinen{% endif %}">{{ nimi }}</a>{% endfor %}
+</div>
+<div class="kortti" style="padding:0"><div class="taulukko-kaari"><table>
+  <thead><tr><th>Nro</th><th>Päiväys</th><th>Tyyppi</th><th>Vastapuoli</th><th>Ajoneuvot</th><th class="num">Kauppahinta</th><th class="num">Maksettava</th></tr></thead>
+  {% for s in rivit %}
+  <tr class="klikattava" data-href="{% url 'autot:sopimus' s.id %}">
+    <td><a href="{% url 'autot:sopimus' s.id %}">{{ s.numero }}</a></td><td class="nowrap">{{ s.pvm|pvm }}</td><td>{{ s.get_tyyppi_display }}</td>
+    <td>{{ s.vp_nimi }}</td>
+    <td class="pieni">{% for r in s.rivit.all %}{% if r.rooli == 'vaihto' %}<span class="merkki">vaihto</span> {% endif %}{{ r.merkki_malli }} {{ r.rekisterinumero }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</td>
+    <td class="num">{{ s.summat_.kauppahinta|euro:True }}</td>
+    <td class="num">{{ s.summat_.maksettava|euro:True }}</td>
+  </tr>
+  {% empty %}<tr><td colspan="7" class="himmea">Ei sopimuksia.</td></tr>{% endfor %}
+</table></div></div>
+{% endblock %}

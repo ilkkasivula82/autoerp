@@ -1,0 +1,4 @@
+{# HTMX-vastaus: välilehden sisältö #valilehti-elementtiin, välilehtipalkki ja ilmoitukset OOB. #}
+{% include valilehti_pohja %}
+{% include "autot/_valilehtipalkki.html" with oob=True %}
+<div id="ilmoitukset" hx-swap-oob="true">{% include "_ilmoitukset.html" %}</div>

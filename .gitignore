@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+staticfiles/
+media/
+.ruff_cache/
+.coverage

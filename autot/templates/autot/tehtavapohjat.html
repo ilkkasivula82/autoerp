@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block otsikko %}Tehtäväpohjat{% endblock %}
+{% block sisalto %}
+<h1>Hallinta</h1>
+{% include "autot/_hallinta_nav.html" %}
+<p class="himmea">Kun auto siirtyy vaiheeseen, sille luodaan automaattisesti vaiheen tehtävät. Tehtävä kohdistetaan henkilölle tai roolille (kaikki roolin käyttäjät näkevät sen omissa tehtävissään).</p>
+<div class="ruudukko r2">
+{% for tila, nimi, luokka, pohjat, lomake in ryhmat %}
+  <div class="kortti"><h2><span class="tila {{ luokka }}">{{ nimi }}</span></h2>
+    {% for p in pohjat %}
+    <div class="tehtava"><div class="teksti">{{ p.otsikko }}
+      <div class="pieni himmea">{% if p.vastuu %}{{ p.vastuu.nimi }}{% elif p.rooli %}{{ p.rooli|valinta:ROOLIT }} (rooli){% else %}ei vastuuta{% endif %}{% if p.erapaiva_pv is not None %} · eräpäivä +{{ p.erapaiva_pv }} pv{% endif %}</div></div>
+      <form method="post">{% csrf_token %}<input type="hidden" name="toiminto" value="poista"><input type="hidden" name="id" value="{{ p.id }}"><button class="linkki vaara pieni">Poista</button></form></div>
+    {% empty %}<p class="pieni himmea">Ei vakiotehtäviä.</p>{% endfor %}
+    <form method="post" style="display:grid;gap:6px;grid-template-columns:2fr 1fr 1fr 70px auto;margin-top:8px">
+      {% csrf_token %}
+      <input type="hidden" name="tila" value="{{ tila }}">
+      <input name="otsikko" placeholder="Uusi tehtävä" required aria-label="Tehtävä">
+      {{ lomake.rooli }}
+      {{ lomake.vastuu }}
+      <input name="erapaiva_pv" placeholder="+pv" inputmode="numeric" aria-label="Eräpäivä päivinä">
+      <button class="pieni">Lisää</button>
+    </form>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

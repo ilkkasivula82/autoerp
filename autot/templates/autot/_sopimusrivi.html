@@ -1,0 +1,22 @@
+{# r = SopimusRivi, ilmoitetut = näytetäänkö myyjän ilmoittamat tiedot #}
+<table class="lomake">
+  <tr><td colspan="2"><span class="nimio">Merkki ja malli</span>{{ r.merkki_malli }}</td>
+      <td><span class="nimio">Rekisteritunnus</span>{{ r.rekisterinumero|default:"–" }}</td>
+      <td><span class="nimio">Valmistenumero</span>{{ r.vin|default:"–" }}</td></tr>
+  <tr><td><span class="nimio">Ensirekisteröinti</span>{{ r.ensirekisterointi|pvm }}</td>
+      <td><span class="nimio">Edellinen katsastus</span>{{ r.katsastettu|pvm }}</td>
+      <td colspan="2"><span class="nimio">Sisältää vähennettävää ALV:tä</span>{% if r.alv_kasittely == 'alv' %}Kyllä{% else %}Ei (marginaaliverotus){% endif %}</td></tr>
+  <tr><td><span class="nimio">Mittarilukema</span>{% if r.km is not None %}{{ r.km|km }} km{% else %}–{% endif %}</td>
+      <td><span class="nimio">Verotus</span>{{ r.get_alv_kasittely_display }}</td>
+      <td><span class="nimio">{% if r.rooli == 'vaihto' %}Vaihtohinta{% else %}Hinta{% endif %}</span>{{ r.hinta|euro:True }}</td>
+      <td>{% if r.nayta_alv %}<span class="nimio">ALV:n osuus</span>{{ r.alv_osuus|euro:True }}{% else %}<span class="nimio">Jäännösvelka</span>{{ r.jaannosvelka|euro:True }}{% endif %}</td></tr>
+  {% if r.nayta_alv and r.jaannosvelka %}<tr><td colspan="4"><span class="nimio">Jäännösvelka</span>{{ r.jaannosvelka|euro:True }}{% if r.jaannosvelan_haltija %} · {{ r.jaannosvelan_haltija }}{% endif %}</td></tr>
+  {% elif r.jaannosvelka and r.jaannosvelan_haltija %}<tr><td colspan="4"><span class="nimio">Jäännösvelan haltija</span>{{ r.jaannosvelan_haltija }}</td></tr>{% endif %}
+  {% if r.rooli == 'vaihto' %}<tr><td colspan="3"><span class="nimio">Vaihtohinnan ja jäännösvelan erotus</span></td><td>{{ r.maksetaan|euro:True }}</td></tr>{% endif %}
+  {% if ilmoitetut %}
+  <tr><td><span class="nimio">Kolaroitu</span>{{ r.get_kolaroitu_display|default:"–" }}</td>
+      <td><span class="nimio">Tuotu käytettynä maahan</span>{{ r.get_maahantuotu_display|default:"–" }}</td>
+      <td><span class="nimio">Mittarilukema vastaa ajomäärää</span>{{ r.get_mittari_vastaa_display|default:"–" }}</td>
+      <td><span class="nimio">Rakenteellisia muutoksia</span>{{ r.get_rakennemuutoksia_display|default:"–" }}</td></tr>
+  {% endif %}
+</table>

@@ -1,0 +1,44 @@
+{% url 'autot:tallenna_kauppa' k.id as osoite %}
+<form method="post" action="{{ osoite }}" hx-post="{{ osoite }}" hx-target="#valilehti">
+{% csrf_token %}
+{% if lomake.non_field_errors %}<div class="ilmoitus virhe">{{ lomake.non_field_errors|join:" " }}</div>{% endif %}
+<div class="kortti">
+  <h2>Tarjous ja osto</h2>
+  <div class="kentat">
+    {% include "_kentta.html" with kentta=lomake.km %}
+    {% include "_kentta.html" with kentta=lomake.toimittaja %}
+    {% include "_kentta.html" with kentta=lomake.ostokanava %}
+    {% include "_kentta.html" with kentta=lomake.tarjottu_hinta %}
+    {% include "_kentta.html" with kentta=lomake.tarjottu_pvm %}
+    {% if k.alv_kasittely == 'alv' %}{% include "_kentta.html" with kentta=lomake.ostohinta lisa="(veroton)" %}{% else %}{% include "_kentta.html" with kentta=lomake.ostohinta %}{% endif %}
+    {% include "_kentta.html" with kentta=lomake.ostopvm %}
+    {% include "_kentta.html" with kentta=lomake.alv_kasittely %}
+    {% include "_kentta.html" with kentta=lomake.arvioitu_saapuminen %}
+    {% include "_kentta.html" with kentta=lomake.sijainti %}
+    {% if k.tila == 'hylatty' %}{% include "_kentta.html" with kentta=lomake.hylkayksen_syy leve=True %}{% else %}<input type="hidden" name="hylkayksen_syy" value="{{ k.hylkayksen_syy }}">{% endif %}
+  </div>
+</div>
+<div class="kortti">
+  <h2>Myynti</h2>
+  <div class="kentat">
+    {% if k.alv_kasittely == 'marginaali' %}
+      {% include "_kentta.html" with kentta=lomake.pyyntihinta lisa="(verollinen)" %}
+    {% else %}
+      {% include "_kentta.html" with kentta=lomake.pyyntihinta lisa="(veroton)" %}
+    {% endif %}
+    {% include "_kentta.html" with kentta=lomake.asiakas %}
+    {% if k.alv_kasittely == 'marginaali' %}
+      {% include "_kentta.html" with kentta=lomake.myyntihinta lisa="(verollinen)" %}
+    {% else %}
+      {% include "_kentta.html" with kentta=lomake.myyntihinta lisa="(veroton)" %}
+    {% endif %}
+    {% include "_kentta.html" with kentta=lomake.myyntipvm %}
+    {% include "_kentta.html" with kentta=lomake.laskunumero %}
+    {% include "_kentta.html" with kentta=lomake.maksettu_pvm %}
+    {% include "_kentta.html" with kentta=lomake.toimitettu_pvm %}
+    {% include "_kentta.html" with kentta=lomake.huomiot leve=True %}
+  </div>
+  <p class="pieni himmea">Hintamuutokset kirjautuvat muutoslokiin (Historia-välilehti).</p>
+  <div class="lomake-alas"><button class="ensisijainen">Tallenna</button></div>
+</div>
+</form>

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block otsikko %}Varustekatalogi{% endblock %}
+{% block sisalto %}
+<h1>Hallinta</h1>
+{% include "autot/_hallinta_nav.html" %}
+<p class="himmea">Varusteet, joista autolle valitaan oikeat. Käytössä olevaa varustetta ei poisteta vaan piilotetaan, jotta vanhojen autojen tiedot säilyvät.</p>
+<div class="ruudukko" style="grid-template-columns: minmax(0,2fr) minmax(280px,1fr)">
+<div>
+{% for kat, lista in kategoriat %}
+  <div class="kortti"><h2>{{ kat.nimi }}</h2>
+  <table>
+  {% for v in lista %}
+    <tr style="{% if not v.aktiivinen %}opacity:.5{% endif %}">
+      <td><form method="post" style="display:flex;gap:6px">{% csrf_token %}<input type="hidden" name="toiminto" value="nimea"><input type="hidden" name="id" value="{{ v.id }}">
+        <input name="nimi" value="{{ v.nimi }}" aria-label="Nimi">
+        <select name="kategoria" style="width:auto" aria-label="Kategoria">{% for c in kaikki_kategoriat %}<option value="{{ c.id }}" {% if c.id == v.kategoria_id %}selected{% endif %}>{{ c.nimi }}</option>{% endfor %}</select>
+        <button class="pieni">Tallenna</button></form></td>
+      <td class="pieni himmea nowrap">{{ v.kaytossa }} autolla</td>
+      <td><form method="post">{% csrf_token %}<input type="hidden" name="toiminto" value="nakyvyys"><input type="hidden" name="id" value="{{ v.id }}">
+        <button class="linkki pieni">{% if v.aktiivinen %}Piilota{% else %}Palauta{% endif %}</button></form></td>
+    </tr>
+  {% empty %}<tr><td class="himmea pieni">Ei varusteita.</td></tr>{% endfor %}
+  </table></div>
+{% endfor %}
+</div>
+<div>
+  <div class="kortti"><h2>Lisää varusteita</h2>
+    <form method="post">{% csrf_token %}<input type="hidden" name="toiminto" value="varuste">
+      {% include "_kentta.html" with kentta=lisayslomake.kategoria %}
+      <div style="margin-top:10px">{% include "_kentta.html" with kentta=lisayslomake.nimet %}</div>
+      <div class="lomake-alas"><button class="ensisijainen">Lisää</button></div></form></div>
+  <div class="kortti"><h2>Uusi kategoria</h2>
+    <form method="post" style="display:flex;gap:8px">{% csrf_token %}<input type="hidden" name="toiminto" value="kategoria">{{ kategorialomake.nimi }}<button>Lisää</button></form></div>
+</div>
+</div>
+{% endblock %}
