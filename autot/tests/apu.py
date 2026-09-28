@@ -14,7 +14,9 @@ from autot.models import (
     Kulu,
     Kuntoraportti,
     Kuva,
+    Lasku,
     Muutosloki,
+    Myyntitarjous,
     Rengassarja,
     Sopimus,
     SopimusRivi,
@@ -75,6 +77,23 @@ def luo_liike(nimi, tunnus, rek="ABC-123", vin="VIN0000000000001"):
         sopimusrivi = SopimusRivi.objects.create(
             sopimus=sopimus, kierto=kierto, hinta=1_000_000, merkki_malli=f"Volvo Malli-{tunnus}"
         )
+        tarjous = Myyntitarjous.objects.create(
+            kierto=kierto,
+            numero=1,
+            asiakas=asiakas,
+            vp_nimi=asiakas.nimi,
+            hinta=1_300_000,
+            lisatiedot=f"Tarjous {tunnus}",
+        )
+        lasku = Lasku.objects.create(
+            sopimus=sopimus,
+            suunta="osto",
+            laji="ostohinta",
+            numero=1,
+            osapuoli_nimi=yritys.nimi,
+            summa=1_000_000,
+            kuvaus=f"Lasku {tunnus}",
+        )
         Muutosloki.objects.create(
             kayttaja=admin, kohde="kierto", kohde_id=kierto.pk, kentta="ostohinta", uusi=f"Loki {tunnus}"
         )
@@ -98,4 +117,6 @@ def luo_liike(nimi, tunnus, rek="ABC-123", vin="VIN0000000000001"):
             pohja=Tehtavapohja.objects.first(),
             sopimus=sopimus,
             sopimusrivi=sopimusrivi,
+            tarjous=tarjous,
+            lasku=lasku,
         )

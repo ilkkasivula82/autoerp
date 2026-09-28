@@ -56,13 +56,12 @@ def yritys(request, yid):
     kaupat = list(
         Kierto.objects.filter(Q(toimittaja=y) | Q(asiakas=y)).select_related("ajoneuvo").kulusummilla().order_by("-id")
     )
-    alv = request.liike.alv_prosentti
     brutto = nayta_brutto(request)
     kate_ostetuista = 0
     ostettu = myyty = 0
     for r in kaupat:
         r.suunta = "osto" if r.toimittaja_id == y.pk else "myynti"
-        r.h = hinnat(r, alv, brutto)
+        r.h = hinnat(r, request.liike, brutto)
         if r.suunta == "osto" and r.ostohinta is not None:
             ostettu += 1
             if r.h.luvut and not r.h.arvio:

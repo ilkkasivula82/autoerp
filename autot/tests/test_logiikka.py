@@ -22,9 +22,18 @@ class MarginaaliverotusTestit(SimpleTestCase):
         # Osto 10 000 €, myynti 12 510 € -> marginaali 2 510 €, vero 2510 * 25,5 / 125,5 = 510 €
         k = kate(ostohinta=1_000_000, myyntihinta=1_251_000)
         self.assertEqual(k.marginaalivero, 51_000)
-        self.assertEqual(k.nettomyynti, 1_200_000)
         self.assertEqual(k.verollinen_myynti, 1_251_000)
         self.assertEqual(k.kate, 200_000)
+        # Nettohinnat laskennallisesti ilman veroa: 12 510 / 1,255 = 9 968,13 ja 10 000 / 1,255 = 7 968,13
+        self.assertEqual((k.nettomyynti, k.nettoosto), (996_813, 796_813))
+        self.assertEqual(k.nettomyynti - k.nettoosto, k.kate)
+
+    def test_nettohinnat_tasmaavat_katteeseen_sentilleen(self):
+        for osto, myynti, kulut in [(1, 2, 0), (999_999, 1_234_567, 5_555), (1_500_000, 1_400_000, 20_000)]:
+            for menettely in ("kuukausi", "tavara"):
+                with self.subTest(osto=osto, myynti=myynti, menettely=menettely):
+                    k = kate(ostohinta=osto, myyntihinta=myynti, kulut_veroton=kulut, menettely=menettely)
+                    self.assertEqual(k.nettomyynti - k.nettoosto - k.kulut, k.kate)
 
     def test_kulut_eivat_pienenna_veropohjaa_mutta_pienentavat_katetta(self):
         ilman = kate(ostohinta=1_000_000, myyntihinta=1_251_000)
@@ -33,11 +42,32 @@ class MarginaaliverotusTestit(SimpleTestCase):
         self.assertEqual(kuluilla.kate, ilman.kate - 80_000)
         self.assertEqual(kuluilla.hankintameno, 1_080_000)
 
-    def test_tappiollisesta_kaupasta_ei_veroa(self):
-        k = kate(ostohinta=1_500_000, myyntihinta=1_400_000, kulut_veroton=20_000)
+    def test_tavarakohtainen_tappiollisesta_kaupasta_ei_veroa(self):
+        k = kate(ostohinta=1_500_000, myyntihinta=1_400_000, kulut_veroton=20_000, menettely="tavara")
         self.assertEqual(k.marginaalivero, 0)
-        self.assertEqual(k.nettomyynti, 1_400_000)
+        self.assertEqual((k.nettomyynti, k.nettoosto), (1_400_000, 1_500_000))
         self.assertEqual(k.kate, -120_000)
+
+    def test_kuukausikohtainen_tappio_pienentaa_veroa(self):
+        # Marginaali -1 000 € -> vero -1000 * 25,5 / 125,5 = -203,19 € (pienentää kuukauden veroa)
+        k = kate(ostohinta=1_500_000, myyntihinta=1_400_000, kulut_veroton=20_000)
+        self.assertEqual(k.marginaalivero, -20_319)
+        self.assertEqual(k.kate, 1_400_000 + 20_319 - 1_500_000 - 20_000)
+
+    def test_menettelyt_samat_voitollisessa_kaupassa(self):
+        a = kate(ostohinta=1_000_000, myyntihinta=1_251_000, menettely="kuukausi")
+        b = kate(ostohinta=1_000_000, myyntihinta=1_251_000, menettely="tavara")
+        self.assertEqual(a, b)
+
+    def test_tuntematon_menettely(self):
+        with self.assertRaises(ValueError):
+            kate(ostohinta=1, myyntihinta=2, menettely="vuosi")
+
+    def test_myymattoman_netto_osto(self):
+        self.assertEqual(logiikka.netto_osto(1_000_000, "marginaali", ALV), 796_813)
+        self.assertEqual(logiikka.netto_osto(1_000_000, "marginaali", ALV, "tavara"), 1_000_000)
+        self.assertEqual(logiikka.netto_osto(1_000_000, "alv", ALV), 1_000_000)
+        self.assertIsNone(logiikka.netto_osto(None, "marginaali", ALV))
 
     def test_nollamarginaali(self):
         k = kate(ostohinta=1_000_000, myyntihinta=1_000_000)
@@ -67,7 +97,7 @@ class MarginaaliverotusTestit(SimpleTestCase):
 
     def test_kateprosentti_nettomyynnista(self):
         k = kate(ostohinta=1_000_000, myyntihinta=1_251_000)
-        self.assertEqual(k.kate_prosentti, Decimal("200000") * 100 / Decimal("1200000"))
+        self.assertEqual(k.kate_prosentti, Decimal("200000") * 100 / Decimal("996813"))
 
     def test_eri_alv_kanta(self):
         # 24 %: marginaali 1 240 € -> vero 240 €
@@ -219,8 +249,8 @@ class BruttoNettoTestit(SimpleTestCase):
         # Osto 10 000, myynti 12 510, kulut 800 alv 0 (1 004 sis. alv)
         k = kate(ostohinta=1_000_000, myyntihinta=1_251_000, kulut_veroton=80_000)
         netto, brutto = k.luvut(False), k.luvut(True)
-        self.assertEqual((netto.myynti, netto.osto, netto.kulut, netto.kate), (1_200_000, 1_000_000, 80_000, 120_000))
-        # Marginaaliostossa ei ole vähennettävää veroa: osto on sama molemmissa
+        # Netto: myynti ja osto ilman veroa, jolloin myös ostohinta muuttuu esitystavan mukana
+        self.assertEqual((netto.myynti, netto.osto, netto.kulut, netto.kate), (996_813, 796_813, 80_000, 120_000))
         self.assertEqual((brutto.myynti, brutto.osto, brutto.kulut), (1_251_000, 1_000_000, 100_400))
         self.assertEqual(brutto.kate, 150_600)
         # Kun kaikki samalla kannalla ja marginaali positiivinen: brutto = netto * (1 + r)
@@ -233,12 +263,18 @@ class BruttoNettoTestit(SimpleTestCase):
         self.assertEqual((brutto.myynti, brutto.osto, brutto.kulut), (1_506_000, 1_255_000, 100_400))
         self.assertEqual(brutto.kate, 150_600)
 
-    def test_tappiollinen_marginaalikauppa(self):
+    def test_tappiollinen_marginaalikauppa_tavarakohtaisesti(self):
         # Veroa ei tule, joten myynti on sama molemmissa; kulujen alv näkyy vain bruttona
-        k = kate(ostohinta=1_500_000, myyntihinta=1_400_000, kulut_veroton=20_000)
+        k = kate(ostohinta=1_500_000, myyntihinta=1_400_000, kulut_veroton=20_000, menettely="tavara")
         self.assertEqual(k.netto.kate, -120_000)
         self.assertEqual(k.brutto.kate, -125_100)
         self.assertEqual(k.netto.myynti, k.brutto.myynti)
+
+    def test_tappiollinen_marginaalikauppa_kuukausikohtaisesti(self):
+        k = kate(ostohinta=1_500_000, myyntihinta=1_400_000, kulut_veroton=20_000)
+        self.assertEqual((k.netto.myynti, k.netto.osto), (1_115_538, 1_195_219))
+        self.assertEqual(k.netto.kate, -99_681)
+        self.assertEqual(k.brutto.kate, -125_100)
 
     def test_kulut_omilla_alv_kannoilla(self):
         # Kulut: 100 € alv 25,5 % (125,50) + 100 € alv 0 % (100,00) = 225,50 sis. alv
@@ -266,7 +302,7 @@ class BruttoNettoTestit(SimpleTestCase):
 
     def test_kateprosentti_oman_myynnin_mukaan(self):
         k = kate(ostohinta=1_000_000, myyntihinta=1_251_000)
-        self.assertEqual(k.netto.kate_prosentti, Decimal(200_000 * 100) / Decimal(1_200_000))
+        self.assertEqual(k.netto.kate_prosentti, Decimal(200_000 * 100) / Decimal(996_813))
         self.assertEqual(k.brutto.kate_prosentti, Decimal(251_000 * 100) / Decimal(1_251_000))
 
 
@@ -314,3 +350,73 @@ class SopimusSummaTestit(SimpleTestCase):
         self.assertEqual(set(logiikka.VARASTOTILAT) - set(logiikka.OSTETUT), set())
         self.assertNotIn("tarjottu", logiikka.OSTETUT)
         self.assertTrue(logiikka.siirto_sallittu("kunnostuksessa", "myyty"))
+
+
+class LaskuTestit(SimpleTestCase):
+    def lajit(self, laskut):
+        return [(lk.suunta, lk.laji, lk.summa, lk.maksettu) for lk in laskut]
+
+    def test_myynti_jakautuu_omiksi_laskuiksi(self):
+        # 20 000 €, vaihtoauto 3 000 €, käsiraha 1 000 €, rahoitus 12 000 € -> toimituksessa 4 000 €
+        s = logiikka.sopimuksen_summat(
+            "myynti", [(2_000_000, 0)], [(300_000, 0)], etumaksu=100_000, rahoitettava=1_200_000
+        )
+        self.assertEqual(
+            self.lajit(logiikka.sopimuksen_laskut("myynti", s, vaihdot=[300_000])),
+            [
+                ("myynti", "etumaksu", 100_000, False),
+                ("myynti", "rahoitus", 1_200_000, False),
+                ("myynti", "toimitus", 400_000, False),
+                ("myynti", "vaihtoauto", 300_000, True),
+            ],
+        )
+
+    def test_vaihtoauton_jaannosvelasta_ostolasku(self):
+        # Vaihtoauto 10 000 €, velkaa 8 000 €: asiakkaalle hyvitetään nettona 2 000 €, velka maksetaan rahoittajalle
+        s = logiikka.sopimuksen_summat("myynti", [(1_500_000, 0)], [(1_000_000, 800_000)])
+        self.assertEqual(s.maksettava, 1_300_000)  # 15 000 - 10 000 + 8 000
+        laskut = logiikka.sopimuksen_laskut("myynti", s, vaihdot=[1_000_000], jaannosvelat=[(0, 800_000)])
+        self.assertEqual(
+            self.lajit(laskut),
+            [
+                ("myynti", "toimitus", 1_300_000, False),
+                ("myynti", "vaihtoauto", 1_000_000, True),
+                ("osto", "jaannosvelka", 800_000, False),
+            ],
+        )
+        self.assertEqual(laskut[-1].rivi, 0)
+        # Liike saa rahaa yhteensä myyntihinnan verran, kun velka on maksettu
+        myynti = sum(lk.summa for lk in laskut if lk.suunta == "myynti")
+        osto = sum(lk.summa for lk in laskut if lk.suunta == "osto")
+        self.assertEqual(myynti - osto, 1_500_000)
+
+    def test_vaihtoauto_kalliimpi_kuin_myyty_hyvitys_asiakkaalle(self):
+        s = logiikka.sopimuksen_summat("myynti", [(500_000, 0)], [(700_000, 0)])
+        laskut = logiikka.sopimuksen_laskut("myynti", s, vaihdot=[700_000])
+        self.assertEqual(self.lajit(laskut)[0], ("osto", "hyvitys", 200_000, False))
+
+    def test_ostosopimus(self):
+        s = logiikka.sopimuksen_summat("osto", [(2_000_000, 1_747_460)])
+        laskut = logiikka.sopimuksen_laskut("osto", s, jaannosvelat=[(0, 1_747_460)])
+        self.assertEqual(
+            self.lajit(laskut), [("osto", "ostohinta", 252_540, False), ("osto", "jaannosvelka", 1_747_460, False)]
+        )
+
+    def test_ei_nollalaskuja(self):
+        s = logiikka.sopimuksen_summat("osto", [(500_000, 500_000)])
+        self.assertEqual(
+            self.lajit(logiikka.sopimuksen_laskut("osto", s, jaannosvelat=[(0, 500_000)])),
+            [("osto", "jaannosvelka", 500_000, False)],
+        )
+
+    def test_tuntematon_tyyppi(self):
+        with self.assertRaises(ValueError):
+            logiikka.sopimuksen_laskut("vuokra", logiikka.sopimuksen_summat("osto", [(1, 0)]))
+
+    def test_viitenumero(self):
+        self.assertEqual(logiikka.viitenumero(123), "1232")
+        self.assertEqual(logiikka.viitenumero(1001), "10016")
+        self.assertEqual(logiikka.viitenumero(123456), "12 34561")
+        for virheellinen in (12, 10**19):
+            with self.assertRaises(ValueError):
+                logiikka.viitenumero(virheellinen)

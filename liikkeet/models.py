@@ -13,6 +13,14 @@ class Liike(models.Model):
     nimi = models.CharField(max_length=200)
     y_tunnus = models.CharField(max_length=20, blank=True)
     alv_prosentti = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("25.5"))
+    marginaalimenettely = models.CharField(
+        "voittomarginaaliverotuksen menettely",
+        max_length=10,
+        choices=[("kuukausi", "Kuukausikohtainen"), ("tavara", "Tavarakohtainen")],
+        default="kuukausi",
+        help_text="Kuukausikohtaisessa tappiollinen kauppa pienentää kuukauden veroa.",
+    )
+    maksuaika_pv = models.PositiveSmallIntegerField("laskujen maksuaika (pv)", default=14)
     # Sopimuksille tulostettavat tiedot
     lahiosoite = models.CharField("lähiosoite", max_length=200, blank=True)
     postinumero = models.CharField("postinumero", max_length=10, blank=True)

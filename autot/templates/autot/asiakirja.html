@@ -1,0 +1,61 @@
+{% load static %}<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block otsikko %}{% endblock %} · {{ liike.nimi }}</title>
+<style>
+  :root { --reuna: #9aa3ae; --teksti: #111827; --himmea: #4b5563; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.4 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: var(--teksti); background: #eef0f3; }
+  .paperi { max-width: 210mm; margin: 16px auto; background: #fff; padding: 14mm 12mm; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+  .tyokalut { max-width: 210mm; margin: 16px auto 0; display: flex; gap: 8px; flex-wrap: wrap; padding: 0 8px; }
+  .tyokalut a, .tyokalut button { font: inherit; font-size: 14px; padding: 8px 12px; border: 1px solid #cfd4dc; border-radius: 8px; background: #fff; color: #1f5eff; text-decoration: none; cursor: pointer; }
+  .tyokalut button { background: #1f5eff; color: #fff; border-color: #1f5eff; }
+  .ilmoitus { max-width: 210mm; margin: 12px auto 0; padding: 10px 14px; border-radius: 8px; background: #e8f5ec; color: #14532d; border: 1px solid #bfe3cb; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid var(--teksti); padding-bottom: 6px; margin-bottom: 10px; }
+  header .liike { font-size: 18px; font-weight: 700; }
+  header h1 { font-size: 20px; letter-spacing: .08em; margin: 0; text-align: center; }
+  header .tunnisteet { text-align: right; font-size: 12px; }
+  section { display: grid; grid-template-columns: 34mm 1fr; border: 1px solid var(--reuna); border-top: 0; }
+  section:first-of-type { border-top: 1px solid var(--reuna); }
+  section > h2 { margin: 0; font-size: 13px; padding: 6px; border-right: 1px solid var(--reuna); background: #f3f4f6; }
+  section > div { padding: 0; }
+  table.lomake { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.lomake td { border-bottom: 1px solid #d1d5db; border-right: 1px solid #d1d5db; padding: 3px 6px; vertical-align: top; word-wrap: break-word; }
+  table.lomake td:last-child { border-right: 0; }
+  table.lomake tr:last-child td { border-bottom: 0; }
+  .nimio { display: block; font-size: 10px; color: var(--himmea); }
+  .raha td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .raha .summa td { font-weight: 700; font-size: 14px; }
+  .vaihto-otsikko { font-size: 11px; font-weight: 700; padding: 4px 6px; background: #fafafa; border-bottom: 1px solid #d1d5db; }
+  .teksti { padding: 6px; white-space: pre-line; }
+  .vakuutus { padding: 6px; font-size: 12px; }
+  .allekirjoitukset td { height: 22mm; vertical-align: bottom; }
+  .viiva { border-top: 1px solid var(--teksti); padding-top: 2px; font-size: 11px; }
+  .ehdot { page-break-before: always; }
+  .ehdot h2 { font-size: 15px; }
+  .ehdot .teksti { font-size: 11px; column-count: 2; column-gap: 8mm; padding: 0; }
+  @media print {
+    body { background: #fff; }
+    .tyokalut, .ilmoitus { display: none; }
+    .paperi { box-shadow: none; margin: 0; padding: 0; max-width: none; }
+    @page { size: A4; margin: 12mm; }
+  }
+  @media (max-width: 700px) { section { grid-template-columns: 1fr; } section > h2 { border-right: 0; border-bottom: 1px solid var(--reuna); } }
+  .leima { display: inline-block; border: 2px solid #15803d; color: #15803d; font-weight: 700; padding: 2px 10px; border-radius: 6px; transform: rotate(-4deg); }
+  .maksutiedot td { font-size: 14px; }
+  .huomio { padding: 6px; font-size: 12px; background: #f9fafb; }
+</style>
+</head>
+<body>
+<div class="tyokalut">
+  {% block tyokalut %}{% endblock %}
+  <button type="button" onclick="window.print()">Tulosta / tallenna PDF</button>
+</div>
+{% for viesti in messages %}<div class="ilmoitus">{{ viesti }}</div>{% endfor %}
+<div class="paperi">
+{% block paperi %}{% endblock %}
+</div>
+</body>
+</html>

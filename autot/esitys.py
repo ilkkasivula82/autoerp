@@ -23,23 +23,29 @@ class Hinnat:
     arvio: bool
 
 
-def hinnat(kierto, alv_prosentti, brutto):
-    """Kierron osto, kulut, myynti ja kate valitussa esitystavassa."""
-    kate = kierto.kate(alv_prosentti)
+def hinnat(kierto, liike, brutto):
+    """Kierron osto, kulut, myynti ja kate valitussa esitystavassa (liike: ALV-kanta ja menettely)."""
+    kate = kierto.kate(liike)
     kulut = kierto.kulusummat()
     kulut_n = kulut.verollinen if brutto else kulut.veroton
     if kate:
         luvut = kate.luvut(brutto)
         return Hinnat(luvut.osto, luvut.kulut, luvut.myynti, luvut, kate.arvio)
 
+    alv, menettely = liike.alv_prosentti, liike.marginaalimenettely
     osto = kierto.ostohinta
     myynti = kierto.myyntihinta if kierto.myyntihinta is not None else kierto.pyyntihinta
     arvio = kierto.myyntihinta is None
+
+    def muunna(sentit, funktio):
+        return funktio(sentit, alv) if sentit is not None else None
+
     if kierto.alv_kasittely == "alv":
         if brutto:
-            osto = logiikka.verolliseksi(osto, alv_prosentti) if osto is not None else None
-            myynti = logiikka.verolliseksi(myynti, alv_prosentti) if myynti is not None else None
+            osto, myynti = muunna(osto, logiikka.verolliseksi), muunna(myynti, logiikka.verolliseksi)
     elif not brutto:
-        # Marginaalikaupan veroton myynti riippuu ostohinnasta; ilman sitä ei voida laskea.
-        myynti = None
+        osto = logiikka.netto_osto(osto, "marginaali", alv, menettely)
+        # Kuukausikohtaisessa menettelyssä myynti on laskennallisesti ilman veroa. Tavarakohtaisessa
+        # veroton myynti riippuu ostohinnasta, eikä sitä voi laskea ilman sitä.
+        myynti = muunna(myynti, logiikka.verottomaksi) if menettely == "kuukausi" else None
     return Hinnat(osto, kulut_n, myynti, None, arvio)

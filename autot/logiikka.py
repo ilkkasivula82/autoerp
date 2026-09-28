@@ -169,11 +169,13 @@ class Luvut:
 
     Brutto:
       - myynti: verollinen myyntihinta (marginaalikaupassa myyntihinta sellaisenaan)
-      - osto: ALV-kaupassa verollinen ostohinta, marginaalikaupassa ostohinta (siinä ei ole vähennettävää veroa)
+      - osto: ALV-kaupassa verollinen ostohinta, marginaalikaupassa ostohinta sellaisenaan
       - kulut: jokainen kulu omalla ALV-kannallaan verollisena
       - kate = myynti - osto - kulut, eli kate sisältäen alv:n
     Netto:
-      - myynti ilman veroa (marginaalikaupassa myyntihinta - marginaalivero), osto ja kulut verottomina
+      - ALV-kauppa: myynti, osto ja kulut verottomina
+      - marginaalikauppa: myynti ja osto laskennallisesti ilman veroa (hinta * 100 / (100 + r)),
+        jolloin myynti - osto = voittomarginaali ilman veroa; kulut verottomina
     """
 
     brutto: bool
@@ -207,6 +209,7 @@ class Kate:
     marginaalivero: int
     nettomyynti: int  # myynti ilman veroa
     osto: int  # marginaali: sellaisenaan, alv: veroton
+    nettoosto: int  # osto ilman veroa (marginaali: laskennallinen)
     verollinen_osto: int
     kulut: int  # kaikki kulut verottomina, myös jälkikulut
     jalkikulut: int  # näistä myyntipäivän jälkeen kirjatut
@@ -236,7 +239,7 @@ class Kate:
     def luvut(self, brutto=False):
         """Luvut valitussa esitystavassa (ks. Luvut)."""
         if not brutto:
-            return Luvut(False, self.nettomyynti, self.osto, self.kulut, self.jalkikulut, self.kate)
+            return Luvut(False, self.nettomyynti, self.nettoosto, self.kulut, self.jalkikulut, self.kate)
         myynti, osto, kulut = self.verollinen_myynti, self.verollinen_osto, self.verolliset_kulut
         return Luvut(True, myynti, osto, kulut, self.verolliset_jalkikulut, myynti - osto - kulut)
 
@@ -260,18 +263,21 @@ def laske_kate(
     kulut_verollinen=None,
     jalkikulut_verollinen=None,
     arvio=False,
+    menettely="kuukausi",
 ):
     """Laskee yhden kierroksen katteen.
 
     Marginaaliverotus (käytetyn tavaran erityisjärjestely):
       - osto- ja myyntihinta sellaisenaan (myyntihinta sisältää veron)
-      - vero = (myyntihinta - ostohinta) * r / (100 + r), jos voittomarginaali > 0;
-        tappiollisesta kaupasta veroa ei makseta
+      - auton vero-osuus = (myyntihinta - ostohinta) * r / (100 + r)
+      - menettely="kuukausi" (kuukausikohtainen, oletus): kuukauden kaikki marginaaliostot ja
+        -myynnit lasketaan yhteen, joten tappiollinen kauppa pienentää kuukauden veroa:
+        auton vero-osuus voi olla negatiivinen
+      - menettely="tavara" (tavarakohtainen): tappiollisesta kaupasta veroa ei makseta (vero 0)
       - kunnostuskulut eivät pienennä veron laskentaperustetta, mutta niiden
         ALV vähennetään, joten katteessa ne ovat verottomina
       - kate = myyntihinta - vero - ostohinta - kulut (alv 0)
-      Vero on auton oma osuus. Kuukausikohtaisessa menettelyssä ilmoitettava vero
-      lasketaan kuukauden kaikista marginaaliostoista ja -myynneistä yhteensä.
+      - nettoluvut: myynti ja osto * 100 / (100 + r), jolloin nettomyynti - nettoosto = myynti - vero - osto
     Normaali ALV:
       - osto- ja myyntihinta sekä kulut verottomina
       - kate = myynti - osto - kulut
@@ -292,15 +298,25 @@ def laske_kate(
     if jalkikulut_verollinen is None:
         jalkikulut_verollinen = verolliseksi(jalkikulut, r)
 
+    if menettely not in ("kuukausi", "tavara"):
+        raise ValueError(f"Tuntematon marginaaliverotuksen menettely: {menettely}")
+
     if alv_kasittely == "alv":
         vero = 0
-        nettomyynti = myyntihinta
+        nettomyynti, nettoosto = myyntihinta, ostohinta
         verollinen = verolliseksi(myyntihinta, r)
         verollinen_osto = verolliseksi(ostohinta, r)
     elif alv_kasittely == "marginaali":
         voittomarginaali = myyntihinta - ostohinta
-        vero = pyorista_sentit(Decimal(voittomarginaali) * r / (100 + r)) if voittomarginaali > 0 else 0
-        nettomyynti = myyntihinta - vero
+        if voittomarginaali > 0 or menettely == "kuukausi":
+            vero = pyorista_sentit(Decimal(voittomarginaali) * r / (100 + r))
+            nettomyynti = verottomaksi(myyntihinta, r)
+            # Johdetaan myynnistä, jotta nettomyynti - nettoosto = myynti - vero - osto sentilleen
+            nettoosto = nettomyynti - (myyntihinta - vero - ostohinta)
+        else:
+            # Tavarakohtainen, tappiollinen kauppa: ei veroa, luvut sellaisenaan
+            vero = 0
+            nettomyynti, nettoosto = myyntihinta, ostohinta
         verollinen = myyntihinta
         verollinen_osto = ostohinta
     else:
@@ -314,13 +330,24 @@ def laske_kate(
         marginaalivero=vero,
         nettomyynti=nettomyynti,
         osto=ostohinta,
+        nettoosto=nettoosto,
         verollinen_osto=verollinen_osto,
         kulut=kulut,
         jalkikulut=jalkikulut,
         verolliset_kulut=int(kulut_verollinen),
         verolliset_jalkikulut=int(jalkikulut_verollinen),
-        kate=nettomyynti - ostohinta - kulut,
+        kate=myyntihinta - vero - ostohinta - kulut,
     )
+
+
+def netto_osto(ostohinta, alv_kasittely, alv_prosentti, menettely="kuukausi"):
+    """Myymättömän auton ostohinta nettona. Marginaaliauto kuukausikohtaisessa menettelyssä
+    laskennallisesti ilman veroa, tavarakohtaisessa sellaisenaan (tappio ei vähennä veroa)."""
+    if ostohinta is None:
+        return None
+    if alv_kasittely == "marginaali" and menettely == "kuukausi":
+        return verottomaksi(ostohinta, alv_prosentti)
+    return ostohinta
 
 
 # ---------- Sopimukset ----------
@@ -380,6 +407,72 @@ def sopimuksen_summat(tyyppi, kohteet, vaihdot=(), *, toimistokulut=0, etumaksu=
             maksettava - etumaksu - rahoitettava,
         )
     raise ValueError(f"Tuntematon sopimustyyppi: {tyyppi}")
+
+
+@dataclass(frozen=True)
+class Laskurivi:
+    """Sopimuksesta syntyvä lasku ennen tallennusta.
+
+    suunta: "myynti" (asiakas / rahoittaja maksaa liikkeelle) tai "osto" (liike maksaa).
+    laji: ks. models.Lasku.LAJIT. maksettu: suoritettu jo sopimuksella (vaihtoajoneuvo).
+    rivi: sopimusrivin indeksi (vaihtoajoneuvot ja jäännösvelat), muuten None.
+    """
+
+    suunta: str
+    laji: str
+    summa: int
+    maksettu: bool = False
+    rivi: int | None = None
+
+
+def sopimuksen_laskut(tyyppi, summat, vaihdot=(), jaannosvelat=()):
+    """Mitkä laskut osto- tai myyntisopimuksesta syntyy.
+
+    Myyntisopimus: jokaisesta kaupan osasta oma lasku: käsiraha (etumaksu), rahoitusyhtiön osuus,
+    maksu toimitettaessa ja vaihtoajoneuvon hyvitys (suoritettu, ei maksettava). Vaihtoajoneuvon
+    jäännösvelasta liike maksaa rahoittajalle ostolaskun. Jos toimituksessa maksettava on
+    negatiivinen, liike maksaa erotuksen asiakkaalle (hyvitys).
+    Ostosopimus: ostohinta myyjälle (käteishinta - jäännösvelka) ja jäännösvelka rahoittajalle.
+
+    vaihdot: vaihtoajoneuvojen hinnat; jaannosvelat: (rivin indeksi, jäännösvelka) -parit.
+    """
+    laskut = []
+    if tyyppi == "myynti":
+        if summat.etumaksu:
+            laskut.append(Laskurivi("myynti", "etumaksu", summat.etumaksu))
+        if summat.rahoitettava:
+            laskut.append(Laskurivi("myynti", "rahoitus", summat.rahoitettava))
+        if summat.toimituksessa > 0:
+            laskut.append(Laskurivi("myynti", "toimitus", summat.toimituksessa))
+        elif summat.toimituksessa < 0:
+            laskut.append(Laskurivi("osto", "hyvitys", -summat.toimituksessa))
+        for i, hinta in enumerate(vaihdot):
+            laskut.append(Laskurivi("myynti", "vaihtoauto", hinta, maksettu=True, rivi=i))
+    elif tyyppi == "osto":
+        if summat.maksettava > 0:
+            laskut.append(Laskurivi("osto", "ostohinta", summat.maksettava))
+    else:
+        raise ValueError(f"Tuntematon sopimustyyppi: {tyyppi}")
+    for i, velka in jaannosvelat:
+        if velka:
+            laskut.append(Laskurivi("osto", "jaannosvelka", velka, rivi=i))
+    return laskut
+
+
+def viitenumero(perusosa):
+    """Suomalainen viitenumero: perusosa + tarkiste (painot 7, 3, 1 oikealta), ryhmiteltynä viiden merkin osiin."""
+    numerot = str(int(perusosa))
+    if not 3 <= len(numerot) <= 19:
+        raise ValueError("Viitenumeron perusosassa pitää olla 3–19 numeroa.")
+    painot = (7, 3, 1)
+    summa = sum(int(n) * painot[i % 3] for i, n in enumerate(reversed(numerot)))
+    viite = numerot + str((10 - summa % 10) % 10)
+    # Ryhmitellään oikealta viiden merkin ryhmiin
+    ryhmat = []
+    while viite:
+        ryhmat.insert(0, viite[-5:])
+        viite = viite[:-5]
+    return " ".join(ryhmat)
 
 
 def alv_osuus(verollinen_sentit, alv_kasittely, alv_prosentti):

@@ -32,7 +32,7 @@ def etusivu(request):
             "omat": omat,
             "tilamaarat": tilamaarat,
             "varastossa": len(varasto),
-            "sidottu": sum(r.sidottu(request.liike.alv_prosentti, nayta_brutto(request)) for r in varasto),
+            "sidottu": sum(r.sidottu(request.liike, nayta_brutto(request)) for r in varasto),
             "pisimmat": sorted(varasto, key=lambda r: -r.seisonut)[:5],
         },
     )

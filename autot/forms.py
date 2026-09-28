@@ -17,6 +17,7 @@ from .models import (
     Koodi,
     Kulu,
     Kuntoraportti,
+    Myyntitarjous,
     Rengassarja,
     Sopimus,
     SopimusRivi,
@@ -441,6 +442,8 @@ class LiikeLomake(forms.ModelForm):
             "nimi",
             "y_tunnus",
             "alv_prosentti",
+            "marginaalimenettely",
+            "maksuaika_pv",
             "lahiosoite",
             "postinumero",
             "postitoimipaikka",
@@ -647,3 +650,61 @@ class VaihtoLomake(KohdeLomake):
 
 
 VaihtoFormset = forms.formset_factory(VaihtoLomake, extra=2)
+
+
+class MyyntitarjousLomake(Suomeksi, forms.ModelForm):
+    """Myyntitarjous asiakkaalle: hinta, toimistokulut ja valinnainen vaihtoajoneuvo."""
+
+    hinta = EuroKentta(label="Tarjoushinta (€, sis. alv)", required=True)
+    toimistokulut = EuroKentta(label="Toimistokulut (€)")
+    vaihto_hinta = EuroKentta(label="Vaihtohinta (€)")
+    vaihto_jaannosvelka = EuroKentta(label="Vaihtoauton jäännösvelka (€)")
+
+    class Meta:
+        model = Myyntitarjous
+        fields = [
+            "asiakas",
+            "vp_nimi",
+            "vp_puhelin",
+            "vp_sahkoposti",
+            "pvm",
+            "voimassa",
+            "hinta",
+            "toimistokulut",
+            "vaihto_rekisterinumero",
+            "vaihto_merkki",
+            "vaihto_malli",
+            "vaihto_km",
+            "vaihto_hinta",
+            "vaihto_jaannosvelka",
+            "lisatiedot",
+        ]
+        widgets = {"pvm": PvmSyote(), "voimassa": PvmSyote(), "lisatiedot": forms.Textarea(attrs={"rows": 3})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["asiakas"].queryset = _yritykset()
+        self.fields["vp_nimi"].required = False
+        self.fields["pvm"].initial = timezone.localdate()
+
+    def clean_toimistokulut(self):
+        return self.cleaned_data.get("toimistokulut") or 0
+
+    def clean_vaihto_jaannosvelka(self):
+        return self.cleaned_data.get("vaihto_jaannosvelka") or 0
+
+    def clean_vaihto_rekisterinumero(self):
+        return logiikka.normalisoi_rekisteri(self.cleaned_data.get("vaihto_rekisterinumero"))
+
+    def clean(self):
+        data = super().clean()
+        if not data.get("asiakas") and not data.get("vp_nimi"):
+            self.add_error("vp_nimi", "Valitse asiakas rekisteristä tai anna nimi.")
+        vaihto = any(data.get(k) for k in ("vaihto_rekisterinumero", "vaihto_merkki", "vaihto_malli"))
+        if vaihto and data.get("vaihto_hinta") is None:
+            self.add_error("vaihto_hinta", "Anna vaihtoajoneuvon hinta.")
+        if data.get("vaihto_hinta") is not None and not data.get("vaihto_merkki"):
+            self.add_error("vaihto_merkki", "Anna vaihtoajoneuvon merkki.")
+        if data.get("vaihto_jaannosvelka") and data.get("vaihto_hinta") is None:
+            self.add_error("vaihto_jaannosvelka", "Jäännösvelka vain vaihtoajoneuvolle.")
+        return data

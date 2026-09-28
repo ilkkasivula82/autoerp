@@ -1,0 +1,65 @@
+{% extends "autot/asiakirja.html" %}
+{% block otsikko %}{{ lk.get_suunta_display }} {{ lk.numero }}{% endblock %}
+{% block tyokalut %}
+  <a href="{% url 'autot:sopimuksen_laskut' s.id %}">← {{ s.get_tyyppi_display }} {{ s.numero }}: laskut</a>
+  <a href="{% url 'autot:laskut' %}">Kaikki laskut</a>
+  {% if sahkoposti and s.vp_sahkoposti and lk.laji != 'rahoitus' %}<a href="mailto:{{ s.vp_sahkoposti }}?subject={{ sahkoposti.otsikko|urlencode }}&amp;body={{ sahkoposti.teksti|urlencode }}">Sähköposti asiakkaalle</a>{% endif %}
+  <form method="post" action="{% url 'autot:lasku_maksettu' lk.id %}" style="display:inline">{% csrf_token %}<button type="submit" style="background:#fff;color:#1f5eff;border-color:#cfd4dc">{% if lk.maksettu %}Merkitse avoimeksi{% else %}Merkitse maksetuksi{% endif %}</button></form>
+{% endblock %}
+{% block paperi %}
+<header>
+  <div class="liike">{% if lk.suunta == 'myynti' %}{{ liike.nimi }}{% else %}{{ lk.osapuoli_nimi }}{% endif %}</div>
+  <h1>{% if lk.suunta == 'myynti' %}LASKU{% else %}OSTOLASKU{% endif %}</h1>
+  <div class="tunnisteet">Päiväys {{ lk.pvm|pvm }}<br>Laskunro <strong>{{ lk.numero }}</strong><br>{{ s.get_tyyppi_display }} {{ s.numero }}</div>
+</header>
+{% if lk.maksettu %}<p><span class="leima">{% if lk.laji == 'vaihtoauto' %}HYVITETTY VAIHTOAJONEUVOLLA{% else %}MAKSETTU{% endif %} {{ lk.maksettu_pvm|pvm }}</span></p>{% endif %}
+
+<section>
+  <h2>{% if lk.suunta == 'myynti' %}Laskuttaja{% else %}Maksaja (liike){% endif %}</h2>
+  <div><table class="lomake">
+    <tr><td colspan="2"><span class="nimio">Nimi</span>{{ liike.nimi }}</td><td><span class="nimio">Y-tunnus</span>{{ liike.y_tunnus|default:"–" }}</td></tr>
+    <tr><td colspan="2"><span class="nimio">Osoite</span>{{ liike.lahiosoite }} {{ liike.postinumero }} {{ liike.postitoimipaikka }}</td><td><span class="nimio">Puhelin</span>{{ liike.puhelin|default:"–" }}</td></tr>
+  </table></div>
+</section>
+<section>
+  <h2>{% if lk.suunta == 'myynti' %}Maksaja{% else %}Maksun saaja{% endif %}</h2>
+  <div><table class="lomake">
+    <tr><td colspan="2"><span class="nimio">Nimi</span>{{ lk.osapuoli_nimi }}</td><td><span class="nimio">Y-tunnus / henkilötunnus</span>{{ lk.osapuoli_tunnus|default:"–" }}</td></tr>
+    <tr><td colspan="3"><span class="nimio">Osoite</span>{{ lk.osapuoli_osoite|default:"–" }}</td></tr>
+    {% if lk.laji == 'rahoitus' %}<tr><td colspan="3"><span class="nimio">Ostaja / rahoituksen hakija</span>{{ s.vp_nimi }}{% if s.vp_tunnus %}, {{ s.vp_tunnus }}{% endif %}</td></tr>{% endif %}
+  </table></div>
+</section>
+<section>
+  <h2>Erittely</h2>
+  <div><table class="lomake raha">
+    <tr><td>{{ lk.kuvaus }}</td><td>{{ lk.summa|euro:True }}</td></tr>
+    {% if lk.suunta == 'myynti' and lk.laji != 'vaihtoauto' and verotus.alv %}
+    <tr><td class="pieni">Kauppahinnan veroton osuus {{ verotus.veroton|euro:True }}, alv {{ alv_prosentti }} % {{ verotus.vero|euro:True }}, yhteensä {{ verotus.verollinen|euro:True }}</td><td></td></tr>
+    {% endif %}
+    <tr class="summa"><td>{% if lk.laji == 'vaihtoauto' %}Hyvitetty vaihtoajoneuvolla{% elif lk.suunta == 'myynti' %}Maksettava yhteensä{% else %}Maksetaan{% endif %}</td><td>{{ lk.summa|euro:True }}</td></tr>
+  </table>
+  <div class="huomio">
+    {% if lk.laji == 'vaihtoauto' %}
+      Kauppahinnasta suoritettu vaihtoajoneuvolla. Ei maksettavaa.{% if not verotus.alv %} Myyjä ei ole laskuttanut arvonlisäveroa.{% endif %}
+    {% elif lk.suunta == 'myynti' %}
+      {% if verotus.alv %}Hinta sisältää arvonlisäveron {{ alv_prosentti }} %. Lasku on osasuoritus kauppahinnasta.{% else %}Voittomarginaalijärjestely – käytetyt tavarat.{% endif %}
+    {% elif lk.laji == 'jaannosvelka' %}
+      Vaihtoajoneuvon tai ostetun ajoneuvon jäännösvelka, jonka liike maksaa rahoittajalle kaupan yhteydessä. Tarkista maksutiedot rahoittajalta.
+    {% elif lk.laji == 'hyvitys' %}
+      Vaihtoajoneuvon hyvitys ylittää kauppahinnan: erotus maksetaan asiakkaalle.
+    {% endif %}
+  </div>
+  </div>
+</section>
+{% if lk.laji != 'vaihtoauto' %}
+<section>
+  <h2>Maksutiedot</h2>
+  <div><table class="lomake maksutiedot">
+    <tr><td><span class="nimio">{% if lk.suunta == 'myynti' %}Saajan tilinumero{% else %}Maksetaan tilille{% endif %}</span>{{ lk.tilinumero|default:"–" }}</td>
+        <td><span class="nimio">Viitenumero</span>{{ lk.viitenumero|default:"–" }}</td></tr>
+    <tr><td><span class="nimio">Eräpäivä</span><strong>{{ lk.erapaiva|pvm }}</strong></td><td><span class="nimio">Summa</span><strong>{{ lk.summa|euro:True }}</strong></td></tr>
+    {% if lk.suunta == 'myynti' %}<tr><td colspan="2"><span class="nimio">Saaja</span>{{ liike.nimi }}</td></tr>{% endif %}
+  </table></div>
+</section>
+{% endif %}
+{% endblock %}

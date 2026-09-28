@@ -27,16 +27,18 @@ Tuotanto Renderissä (`render.yaml`), kuvat Cloudflare R2:ssa.
    pyöristys `Decimal` + `ROUND_HALF_UP`.
 6. **Katelaskenta `autot/logiikka.py`:ssä**, ilman Django-riippuvuuksia, ja jokaiselle säännölle yksikkötesti
    (`test_logiikka.py`). Marginaaliverotus: vero = (myynti − osto) × r / (100 + r), jos voittomarginaali > 0.
-   Tämä on auton oma vero-osuus (tavarakohtainen menettely); kuukausikohtaisessa menettelyssä ilmoitettava vero
-   lasketaan kuukauden kaikista marginaaliostoista ja -myynneistä.
+   Tämä on auton oma vero-osuus. Menettely on liikkeen asetus (`Liike.marginaalimenettely`, oletus kuukausi):
+   kuukausikohtaisessa tappio pienentää veroa (vero < 0), tavarakohtaisessa vero on vähintään 0.
+   Marginaaliauton nettohinnat ovat laskennallisia (`laske_kate`, `netto_osto`).
    Rahaluvut näytetään käyttäjän valinnan mukaan nettona tai bruttona: näkymät käyttävät `autot/esitys.py`:tä
    (`hinnat`, `nayta_brutto`) ja `Kate.luvut(brutto)`:a, eivät laske alv:tä itse. Otsikoissa kerrotaan
    esitystapa (`ALV_MERKINTA`).
 7. **Varastoon vain ostohinnalla.** Auto tulee varastoon ostosopimuksella, myyntisopimuksen vaihtoautona tai
    suoraan ostohinnan kanssa (`autot/sopimukset.py`). Tietokannan rajoitteet (`ostetulla_autolla_ostohinta`,
    `myydylla_autolla_myyntihinta`) varmistavat tämän; älä kierrä niitä. Sopimuksen hinnat ovat käteishintoja
-   (sis. alv), kierrolle muunnetaan `logiikka.kierron_hinta`:lla.
-8. **Kuvat vain `autot/kuvat.py`:n kautta** (Djangon `default_storage`: R2 tuotannossa, levy kehityksessä).
+   (sis. alv), kierrolle muunnetaan `logiikka.kierron_hinta`:lla. Sopimus luo laskunsa (`sopimukset.luo_laskut`,
+   säännöt `logiikka.sopimuksen_laskut`); myyntitarjouksesta tehty sopimus merkitsee tarjouksen hyväksytyksi.
+8. **Kuvat vain `autot/kuvat.py`:n kautta** (tallennus `palvelut.lisaa_kuvat`, vakiopaikat `Kuva.VAKIOPAIKAT`) (Djangon `default_storage`: R2 tuotannossa, levy kehityksessä).
    Kuvia ei palvella suoraan ämpäristä, vaan näkymä tarkistaa liikkeen ja ohjaa allekirjoitettuun osoitteeseen.
 9. **HTMX:** välilehdet ja pienet päivitykset palauttavat osapohjan (`_`-alkuiset pohjat). Jokaisen lomakkeen
    pitää toimia myös ilman JavaScriptiä (tavallinen POST + uudelleenohjaus).
@@ -66,12 +68,13 @@ autot/
   logiikka.py      tilat, siirrot, raha, katelaskenta (puhdas Python)
   models.py        tietomalli: Ajoneuvo, Kierto, Kulu, Tilahistoria, Tehtava, Kuntoraportti, ...
   palvelut.py      tilasiirrot, uusi kierros, tehtävien luonti, muutosloki
-  sopimukset.py    osto- ja myyntisopimukset (auto varastoon, vaihtoautot)
+  sopimukset.py    osto- ja myyntisopimukset (auto varastoon, vaihtoautot), myyntitarjoukset, laskujen luonti
   forms.py         lomakkeet
   kuvat.py         kuvien pienennys ja tallennus
   perusdata.py     uuden liikkeen koodistot, varusteet, tehtäväpohjat
-  views/           autot, kortti (välilehdet), sopimukset, tehtavat, hallinta, raportit
+  views/           autot, kortti (välilehdet), sopimukset, tarjoukset, laskut, tehtavat, hallinta, raportit
   templates/autot/ pohjat; valilehdet/ = kortin välilehdet
   management/commands/  demodata, luo_liike
-  tests/           test_logiikka, test_monivuokraajuus, test_nakymat, test_sopimukset
+  tests/           test_logiikka, test_monivuokraajuus, test_nakymat, test_sopimukset, test_kuvat,
+                   test_tarjoukset_laskut
 ```

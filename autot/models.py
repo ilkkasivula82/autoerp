@@ -321,34 +321,44 @@ class Kierto(LiikkeenMalli):
             jalki_verollinen=sum(k[1] for k in jalki),
         )
 
-    def kate(self, alv_prosentti=None):
-        """Toteutunut kate, tai arvio pyyntihinnalla, jos autoa ei ole myyty."""
+    def kate(self, liike=None):
+        """Toteutunut kate, tai arvio pyyntihinnalla, jos autoa ei ole myyty.
+
+        liike: ALV-kanta ja marginaaliverotuksen menettely. Listoissa annetaan request.liike,
+        jottei jokainen rivi hae liikettä erikseen.
+        """
         myynti, arvio = self.myyntihinta, False
         if myynti is None:
             myynti, arvio = self.pyyntihinta, True
         kulut = self.kulusummat()
-        if alv_prosentti is None:
-            alv_prosentti = self.liike.alv_prosentti
+        liike = liike or self.liike
         return logiikka.laske_kate(
             ostohinta=self.ostohinta,
             myyntihinta=myynti,
             alv_kasittely=self.alv_kasittely,
             kulut_veroton=kulut.veroton,
-            alv_prosentti=alv_prosentti,
+            alv_prosentti=liike.alv_prosentti,
             jalkikulut=kulut.jalki_veroton,
             kulut_verollinen=kulut.verollinen,
             jalkikulut_verollinen=kulut.jalki_verollinen,
             arvio=arvio,
+            menettely=liike.marginaalimenettely,
         )
 
-    def sidottu(self, alv_prosentti, brutto=False):
-        """Autoon sidottu raha: ostohinta + kulut (brutto: ALV-kaupan osto ja kulut verollisina)."""
+    def sidottu(self, liike, brutto=False):
+        """Autoon sidottu raha: ostohinta + kulut.
+
+        Brutto: ALV-kaupan osto ja kulut verollisina. Netto: kulut verottomina, osto kuten
+        netto_osto (marginaaliauto kuukausikohtaisessa menettelyssä laskennallisesti ilman veroa).
+        """
         kulut = self.kulusummat()
         osto = self.ostohinta or 0
         if not brutto:
-            return osto + kulut.veroton
+            return logiikka.netto_osto(osto, self.alv_kasittely, liike.alv_prosentti, liike.marginaalimenettely) + (
+                kulut.veroton
+            )
         if self.alv_kasittely == "alv":
-            osto = logiikka.verolliseksi(osto, alv_prosentti)
+            osto = logiikka.verolliseksi(osto, liike.alv_prosentti)
         return osto + kulut.verollinen
 
     def kierroksia(self):
@@ -450,10 +460,33 @@ class Rengassarja(LiikkeenMalli):
 
 class Kuva(LiikkeenMalli):
     TYYPIT = [("ulko", "Ulkokuvat"), ("sisa", "Sisäkuvat"), ("vaurio", "Vauriot"), ("dokumentti", "Dokumentit")]
+    # Vakiokuvapaikat kuvausjärjestyksessä: (paikka, nimi, tyyppi). Puhelimella kuvattaessa
+    # sovellus ohjaa ottamaan kuvat tässä järjestyksessä ja tallentaa ne oikeille paikoille.
+    VAKIOPAIKAT = [
+        ("etu_vasen", "Edestä vasemmalta", "ulko"),
+        ("edesta", "Suoraan edestä", "ulko"),
+        ("etu_oikea", "Edestä oikealta", "ulko"),
+        ("oikea_kylki", "Oikea kylki", "ulko"),
+        ("taka_oikea", "Takaa oikealta", "ulko"),
+        ("takaa", "Suoraan takaa", "ulko"),
+        ("taka_vasen", "Takaa vasemmalta", "ulko"),
+        ("vasen_kylki", "Vasen kylki", "ulko"),
+        ("vanne", "Vanne ja rengas", "ulko"),
+        ("kojelauta", "Kojelauta", "sisa"),
+        ("mittaristo", "Mittaristo (km-lukema)", "sisa"),
+        ("etuistuimet", "Etuistuimet", "sisa"),
+        ("takaistuimet", "Takaistuimet", "sisa"),
+        ("tavaratila", "Tavaratila", "sisa"),
+        ("moottoritila", "Moottoritila", "sisa"),
+    ]
+    PAIKAT = [(p, n) for p, n, _ in VAKIOPAIKAT]
+    PAIKAN_TYYPPI = {p: t for p, _, t in VAKIOPAIKAT}
+    PAIKAN_JARJESTYS = {p: i for i, (p, _, _) in enumerate(VAKIOPAIKAT)}
 
     kierto = models.ForeignKey(Kierto, on_delete=models.CASCADE, related_name="kuvat")
     avain = models.CharField(max_length=300)  # tallennusavain (R2 / levy); pikkukuva: avain + _t
     tyyppi = models.CharField(max_length=20, choices=TYYPIT, default="ulko")
+    paikka = models.CharField("vakiopaikka", max_length=20, choices=PAIKAT, blank=True)
     jarjestys = models.IntegerField(default=0)
     paakuva = models.BooleanField(default=False)
     luotu = models.DateTimeField(auto_now_add=True)
@@ -463,6 +496,12 @@ class Kuva(LiikkeenMalli):
         verbose_name = "kuva"
         verbose_name_plural = "kuvat"
         ordering = ["-paakuva", "tyyppi", "jarjestys", "id"]
+        constraints = [
+            # Kullakin vakiopaikalla on kierrolla enintään yksi kuva
+            models.UniqueConstraint(
+                fields=["kierto", "paikka"], condition=~Q(paikka=""), name="kuva_vakiopaikka_uniikki"
+            ),
+        ]
 
 
 class Vaurio(LiikkeenMalli):
@@ -666,3 +705,117 @@ class SopimusRivi(LiikkeenMalli):
         verbose_name = "sopimusrivi"
         verbose_name_plural = "sopimusrivit"
         ordering = ["id"]
+
+
+# ---------- Myyntitarjoukset ----------
+
+
+class Myyntitarjous(LiikkeenMalli):
+    """Tarjous varastossa olevasta autosta asiakkaalle. Hyväksytystä tarjouksesta tehdään myyntisopimus."""
+
+    TILAT = [("avoin", "Avoin"), ("hyvaksytty", "Hyväksytty"), ("hylatty", "Hylätty")]
+
+    kierto = models.ForeignKey(Kierto, on_delete=models.CASCADE, related_name="myyntitarjoukset")
+    numero = models.PositiveIntegerField("tarjousnumero")
+    pvm = models.DateField("päiväys", default=timezone.localdate)
+    voimassa = models.DateField("voimassa asti", null=True, blank=True)
+    asiakas = models.ForeignKey(
+        Yritys,
+        verbose_name="asiakas rekisteristä",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="myyntitarjoukset",
+    )
+    vp_nimi = models.CharField("asiakkaan nimi", max_length=200)
+    vp_puhelin = models.CharField("puhelin", max_length=50, blank=True)
+    vp_sahkoposti = models.EmailField("sähköposti", blank=True)
+    hinta = models.BigIntegerField("käteishinta", help_text="senttiä, sis. mahdollisen alv:n")
+    toimistokulut = models.BigIntegerField("toimistokulut", default=0, help_text="senttiä")
+    # Vaihtoajoneuvo (valinnainen)
+    vaihto_rekisterinumero = models.CharField("vaihtoauton rekisterinumero", max_length=20, blank=True)
+    vaihto_merkki = models.CharField("vaihtoauton merkki", max_length=100, blank=True)
+    vaihto_malli = models.CharField("vaihtoauton malli", max_length=100, blank=True)
+    vaihto_km = models.PositiveIntegerField("vaihtoauton mittarilukema", null=True, blank=True)
+    vaihto_hinta = models.BigIntegerField("vaihtohinta", null=True, blank=True, help_text="senttiä")
+    vaihto_jaannosvelka = models.BigIntegerField("vaihtoauton jäännösvelka", default=0, help_text="senttiä")
+    lisatiedot = models.TextField("lisätiedot", blank=True)
+    tila = models.CharField(max_length=20, choices=TILAT, default="avoin")
+    sopimus = models.ForeignKey("Sopimus", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    laatija = models.ForeignKey(KAYTTAJA, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    luotu = models.DateTimeField(auto_now_add=True)
+
+    class Meta(LiikkeenMalli.Meta):
+        verbose_name = "myyntitarjous"
+        verbose_name_plural = "myyntitarjoukset"
+        ordering = ["-pvm", "-numero"]
+        constraints = [models.UniqueConstraint(fields=["liike", "numero"], name="myyntitarjous_numero_uniikki")]
+
+    def __str__(self):
+        return f"Myyntitarjous {self.numero}"
+
+    @property
+    def on_vaihtoauto(self):
+        return self.vaihto_hinta is not None
+
+    @property
+    def vanhentunut(self):
+        return self.tila == "avoin" and self.voimassa is not None and self.voimassa < timezone.localdate()
+
+    def summat(self):
+        vaihdot = [(self.vaihto_hinta, self.vaihto_jaannosvelka)] if self.on_vaihtoauto else []
+        return logiikka.sopimuksen_summat("myynti", [(self.hinta, 0)], vaihdot, toimistokulut=self.toimistokulut)
+
+
+# ---------- Laskut ----------
+
+
+class Lasku(LiikkeenMalli):
+    """Sopimuksesta syntyvä lasku. Myyntilaskun maksaa asiakas tai rahoitusyhtiö, ostolaskun liike.
+
+    Myyntisopimuksesta syntyy oma lasku jokaisesta kaupan osasta (käsiraha, rahoitus, maksu
+    toimitettaessa, vaihtoajoneuvo), vaihtoauton jäännösvelasta ostolasku rahoittajalle.
+    """
+
+    SUUNNAT = [("myynti", "Myyntilasku"), ("osto", "Ostolasku")]
+    LAJIT = [
+        ("etumaksu", "Käsiraha (etumaksu)"),
+        ("rahoitus", "Rahoitusyhtiön osuus"),
+        ("toimitus", "Maksu toimitettaessa"),
+        ("vaihtoauto", "Maksettu vaihtoajoneuvolla"),
+        ("hyvitys", "Hyvitys asiakkaalle"),
+        ("ostohinta", "Ostohinta myyjälle"),
+        ("jaannosvelka", "Jäännösvelka rahoittajalle"),
+    ]
+
+    sopimus = models.ForeignKey(Sopimus, on_delete=models.PROTECT, related_name="laskut")
+    suunta = models.CharField(max_length=10, choices=SUUNNAT)
+    laji = models.CharField(max_length=20, choices=LAJIT)
+    numero = models.PositiveIntegerField("laskunumero")
+    viitenumero = models.CharField("viitenumero", max_length=30, blank=True)
+    pvm = models.DateField("laskun päiväys", default=timezone.localdate)
+    erapaiva = models.DateField("eräpäivä", null=True, blank=True)
+    # Maksaja (myyntilasku) tai maksun saaja (ostolasku)
+    osapuoli_nimi = models.CharField("nimi", max_length=200)
+    osapuoli_tunnus = models.CharField("Y-tunnus / henkilötunnus", max_length=20, blank=True)
+    osapuoli_osoite = models.CharField("osoite", max_length=300, blank=True)
+    tilinumero = models.CharField("maksetaan tilille", max_length=40, blank=True)
+    summa = models.BigIntegerField("summa", help_text="senttiä")
+    kuvaus = models.CharField("kuvaus", max_length=500)
+    maksettu_pvm = models.DateField("maksettu", null=True, blank=True)
+    luotu = models.DateTimeField(auto_now_add=True)
+
+    class Meta(LiikkeenMalli.Meta):
+        verbose_name = "lasku"
+        verbose_name_plural = "laskut"
+        ordering = ["-pvm", "-numero"]
+        constraints = [
+            models.UniqueConstraint(fields=["liike", "suunta", "numero"], name="laskunumero_uniikki"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_suunta_display()} {self.numero}"
+
+    @property
+    def maksettu(self):
+        return self.maksettu_pvm is not None

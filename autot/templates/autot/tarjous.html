@@ -1,0 +1,66 @@
+{% extends "autot/asiakirja.html" %}
+{% block otsikko %}Myyntitarjous {{ t.numero }}{% endblock %}
+{% block tyokalut %}
+  <a href="{% url 'autot:kortti' k.id %}?v=tarjoukset">← {{ a.merkki }} {{ a.malli }} {{ a.rekisterinumero }}</a>
+  {% if voi_myyda %}<a href="{% url 'autot:myyntisopimus' k.id %}?tarjous={{ t.id }}">Asiakas hyväksyi → tee myyntisopimus</a>{% endif %}
+  {% if t.sopimus %}<a href="{% url 'autot:sopimus' t.sopimus.id %}">Myyntisopimus {{ t.sopimus.numero }}</a>{% endif %}
+  {% if t.vp_sahkoposti %}<a href="mailto:{{ t.vp_sahkoposti }}?subject={{ sahkoposti.otsikko|urlencode }}&amp;body={{ sahkoposti.teksti|urlencode }}">Sähköposti asiakkaalle</a>{% endif %}
+{% endblock %}
+{% block paperi %}
+<header>
+  <div class="liike">{{ liike.nimi }}</div>
+  <h1>TARJOUS</h1>
+  <div class="tunnisteet">Päiväys {{ t.pvm|pvm }}<br>Tarjousnro <strong>{{ t.numero }}</strong>{% if t.voimassa %}<br>Voimassa {{ t.voimassa|pvm }} asti{% endif %}</div>
+</header>
+{% if t.tila != 'avoin' %}<p><span class="leima">{{ t.get_tila_display }}</span></p>{% endif %}
+
+<section>
+  <h2>Myyjä</h2>
+  <div><table class="lomake">
+    <tr><td colspan="2"><span class="nimio">Nimi</span>{{ liike.nimi }}</td><td><span class="nimio">Y-tunnus</span>{{ liike.y_tunnus|default:"–" }}</td></tr>
+    <tr><td colspan="2"><span class="nimio">Osoite</span>{{ liike.lahiosoite }} {{ liike.postinumero }} {{ liike.postitoimipaikka }}</td><td><span class="nimio">Yhteyshenkilö</span>{{ t.laatija.nimi|default:"" }}</td></tr>
+    <tr><td><span class="nimio">Puhelin</span>{{ liike.puhelin|default:"–" }}</td><td colspan="2"><span class="nimio">Sähköposti</span>{{ liike.sahkoposti|default:"–" }}</td></tr>
+  </table></div>
+</section>
+<section>
+  <h2>Asiakas</h2>
+  <div><table class="lomake">
+    <tr><td colspan="2"><span class="nimio">Nimi</span>{{ t.vp_nimi }}</td><td><span class="nimio">Puhelin</span>{{ t.vp_puhelin|default:"–" }}</td></tr>
+    <tr><td colspan="3"><span class="nimio">Sähköposti</span>{{ t.vp_sahkoposti|default:"–" }}</td></tr>
+  </table></div>
+</section>
+<section>
+  <h2>Ajoneuvo</h2>
+  <div><table class="lomake">
+    <tr><td colspan="2"><span class="nimio">Merkki ja malli</span>{{ a.merkki }} {{ a.malli }} {{ a.mallitarkenne }}</td><td><span class="nimio">Rekisterinumero</span>{{ a.rekisterinumero|default:"–" }}</td></tr>
+    <tr><td><span class="nimio">Vuosimalli</span>{{ a.vuosimalli|default:"–" }}</td><td><span class="nimio">Ensirekisteröinti</span>{{ a.ensirekisterointi|pvm }}</td><td><span class="nimio">Mittarilukema</span>{{ k.km|km }}</td></tr>
+    {% if a.vin %}<tr><td colspan="3"><span class="nimio">Valmistenumero (VIN)</span>{{ a.vin }}</td></tr>{% endif %}
+  </table></div>
+</section>
+{% if t.on_vaihtoauto %}
+<section>
+  <h2>Vaihtoajoneuvo</h2>
+  <div><table class="lomake">
+    <tr><td colspan="2"><span class="nimio">Merkki ja malli</span>{{ t.vaihto_merkki }} {{ t.vaihto_malli }}</td><td><span class="nimio">Rekisterinumero</span>{{ t.vaihto_rekisterinumero|default:"–" }}</td></tr>
+    <tr><td><span class="nimio">Mittarilukema</span>{{ t.vaihto_km|km }}</td><td><span class="nimio">Vaihtohinta</span>{{ t.vaihto_hinta|euro:True }}</td><td><span class="nimio">Jäännösvelka</span>{{ t.vaihto_jaannosvelka|euro:True }}</td></tr>
+  </table></div>
+</section>
+{% endif %}
+<section>
+  <h2>Hinta</h2>
+  <div><table class="lomake raha">
+    <tr><td>Ajoneuvon hinta</td><td>{{ summat.kauppahinta|euro:True }}</td></tr>
+    {% if summat.toimistokulut %}<tr><td>Toimistokulut</td><td>{{ summat.toimistokulut|euro:True }}</td></tr>{% endif %}
+    <tr><td><strong>Käteishinta yhteensä</strong></td><td><strong>{{ summat.kateishinta|euro:True }}</strong></td></tr>
+    {% if t.on_vaihtoauto %}
+    <tr><td>Vaihtoajoneuvon hyvitys</td><td>−{{ summat.vaihtohyvitys|euro:True }}</td></tr>
+    {% if summat.jaannosvelka %}<tr><td>Vaihtoajoneuvon jäännösvelka (liike maksaa rahoittajalle)</td><td>+{{ summat.jaannosvelka|euro:True }}</td></tr>{% endif %}
+    <tr class="summa"><td>{% if summat.maksettava < 0 %}Liike maksaa asiakkaalle{% else %}Asiakas maksaa{% endif %}</td><td>{% if summat.maksettava < 0 %}{{ summat.maksettava|euro:True|cut:"-" }}{% else %}{{ summat.maksettava|euro:True }}{% endif %}</td></tr>
+    {% endif %}
+  </table>
+  <div class="huomio">{% if k.alv_kasittely == 'alv' %}Hinta sisältää arvonlisäveron.{% else %}Voittomarginaalijärjestely – käytetyt tavarat. Hinnassa ei eritellä arvonlisäveroa.{% endif %}{% if t.on_vaihtoauto %} Vaihtoajoneuvon hinta edellyttää, että sen kunto ja tiedot vastaavat ilmoitettua.{% endif %}</div>
+  </div>
+</section>
+{% if t.lisatiedot %}<section><h2>Lisätiedot</h2><div class="teksti">{{ t.lisatiedot }}</div></section>{% endif %}
+<p class="pieni" style="margin-top:12px">{% if t.voimassa %}Tarjous on voimassa {{ t.voimassa|pvm }} asti tai kunnes ajoneuvo on myyty.{% else %}Tarjous on voimassa, kunnes ajoneuvo on myyty.{% endif %} Kauppa syntyy, kun molemmat osapuolet allekirjoittavat myyntisopimuksen.</p>
+{% endblock %}

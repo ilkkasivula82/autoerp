@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block otsikko %}Uusi auto{% endblock %}
 {% block sisalto %}
-<div class="otsikkorivi"><div><h1>Uusi auto / tarjous</h1>
+<div class="otsikkorivi"><div><h1>Uusi auto</h1>
 <div class="himmea">Kirjaa tarjottu auto, tee ostosopimus tai lisää auto suoraan varastoon.</div></div></div>
 
-<form method="post" novalidate>
+<form method="post" novalidate enctype="multipart/form-data">
 {% csrf_token %}
 {% if lomake.non_field_errors %}<div class="ilmoitus virhe">{{ lomake.non_field_errors|join:" " }}</div>{% endif %}
 <div id="aiempi"></div>
@@ -43,6 +43,12 @@
       <p class="pieni himmea" style="margin:4px 0 0">Varastoon auto tulee ostosopimuksella, myyntisopimuksen vaihtoautona tai suoraan ostohinnalla.</p></div>
     {% include "_kentta.html" with kentta=lomake.ostohinta piilo="ostohinta-kentta" %}
   </div>
+</div>
+
+<div class="kortti latausalue" data-pudotus>
+  <h2>Kuvat</h2>
+  <p class="pudotusohje">Raahaa kuvat tähän tai valitse tiedostot. Vakiokuvat (edestä vasemmalta ym.) voi ottaa tallennuksen jälkeen auton kortilla, puhelimella ohjatusti.</p>
+  <input type="file" name="kuvat" accept="image/*" multiple aria-label="Kuvat">
 </div>
 
 <div class="lomake-alas"><button class="ensisijainen">Tallenna</button><a class="nappi" href="{% url 'autot:lista' %}">Peruuta</a></div>

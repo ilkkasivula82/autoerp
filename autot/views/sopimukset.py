@@ -8,7 +8,7 @@ from django.views.decorators.http import require_GET
 from .. import logiikka, palvelut
 from .. import sopimukset as sopimuspalvelu
 from ..forms import KohdeLomake, SopimusLomake, VaihtoFormset
-from ..models import Sopimus, Yritys
+from ..models import Myyntitarjous, Sopimus, Yritys
 from .kortti import hae_kierto
 from .yhteiset import kortille
 
@@ -37,6 +37,35 @@ def _alkuarvot(k, tyyppi, alv):
     return sopimus, kohde
 
 
+def _tarjouksen_alkuarvot(tarjous, alku_sopimus, alku_kohde):
+    """Myyntisopimus tarjouksesta: asiakas, hinta, toimistokulut ja vaihtoauto tarjoukselta."""
+    if tarjous.asiakas:
+        alku_sopimus.update({"valittu": tarjous.asiakas, **sopimuspalvelu.vastapuolen_tiedot(tarjous.asiakas)})
+    else:
+        alku_sopimus.update(
+            {
+                "valittu": None,
+                "vp_nimi": tarjous.vp_nimi,
+                "vp_puhelin": tarjous.vp_puhelin,
+                "vp_sahkoposti": tarjous.vp_sahkoposti,
+            }
+        )
+    alku_sopimus["toimistokulut"] = tarjous.toimistokulut
+    alku_kohde["hinta"] = tarjous.hinta
+    if not tarjous.on_vaihtoauto:
+        return []
+    return [
+        {
+            "rekisterinumero": tarjous.vaihto_rekisterinumero,
+            "merkki": tarjous.vaihto_merkki,
+            "malli": tarjous.vaihto_malli,
+            "km": tarjous.vaihto_km,
+            "hinta": tarjous.vaihto_hinta,
+            "jaannosvelka": tarjous.vaihto_jaannosvelka or None,
+        }
+    ]
+
+
 def _sopimuslomake(request, kid, tyyppi):
     k = hae_kierto(kid)
     alv = request.liike.alv_prosentti
@@ -51,10 +80,15 @@ def _sopimuslomake(request, kid, tyyppi):
         return kortille(k.pk)
 
     alku_sopimus, alku_kohde = _alkuarvot(k, tyyppi, alv)
+    tarjous, alku_vaihdot = None, []
+    tid = (request.POST if request.method == "POST" else request.GET).get("tarjous", "")
+    if tyyppi == "myynti" and tid.isdigit():
+        tarjous = get_object_or_404(Myyntitarjous, pk=int(tid), kierto=k, tila="avoin")
+        alku_vaihdot = _tarjouksen_alkuarvot(tarjous, alku_sopimus, alku_kohde)
     data = request.POST if request.method == "POST" else None
     lomake = SopimusLomake(data, initial=alku_sopimus, prefix="s")
     kohde = KohdeLomake(data, initial=alku_kohde, prefix="kohde")
-    vaihdot = VaihtoFormset(data, prefix="vaihto") if tyyppi == "myynti" else None
+    vaihdot = VaihtoFormset(data, initial=alku_vaihdot, prefix="vaihto") if tyyppi == "myynti" else None
 
     if request.method == "POST":
         kelpaa = lomake.is_valid() & kohde.is_valid() & (vaihdot.is_valid() if vaihdot is not None else True)
@@ -76,6 +110,7 @@ def _sopimuslomake(request, kid, tyyppi):
                         kohde=kohde.cleaned_data,
                         vaihdot=vaihtorivit,
                         alv_prosentti=alv,
+                        tarjous=tarjous,
                     )
             except (palvelut.SiirtoVirhe, IntegrityError) as e:
                 messages.error(request, str(e) if isinstance(e, palvelut.SiirtoVirhe) else "Tallennus epäonnistui.")
@@ -96,6 +131,7 @@ def _sopimuslomake(request, kid, tyyppi):
             "lomake": lomake,
             "kohde": kohde,
             "vaihdot": vaihdot,
+            "tarjous": tarjous,
         },
         status=status,
     )

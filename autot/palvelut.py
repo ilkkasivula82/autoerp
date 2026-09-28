@@ -6,12 +6,13 @@ Kaikki funktiot olettavat, että liike on aktivoitu (näkymissä LiikeMiddleware
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Q, Value
+from django.db.models import Max, Q, Value
 from django.db.models.functions import Replace, Upper
 from django.utils import timezone
 
+from . import kuvat as kuvatallennus
 from . import logiikka
-from .models import Ajoneuvo, Kierto, Muutosloki, Tehtava, Tehtavapohja, Tilahistoria
+from .models import Ajoneuvo, Kierto, Kuva, Muutosloki, Tehtava, Tehtavapohja, Tilahistoria
 
 
 class SiirtoVirhe(ValueError):
@@ -58,6 +59,50 @@ def kirjaa_muutokset(kayttaja, olio, vanhat, kentat):
         if vanha != uusi:
             nimi = olio._meta.get_field(kentta).verbose_name
             kirjaa(kayttaja, kohde, olio.pk, nimi, lokiarvo(kentta, vanha), lokiarvo(kentta, uusi))
+
+
+def lisaa_kuvat(kierto, tiedostot, kayttaja, tyyppi=None, paikka=None):
+    """Tallentaa kuvat kierrolle. Palauttaa (lisätyt Kuva-oliot, lukukelvottomien tiedostojen nimet).
+
+    paikka: vakiopaikka (Kuva.VAKIOPAIKAT). Silloin tallennetaan vain ensimmäinen tiedosto,
+    tyyppi tulee paikasta ja paikan aiempi kuva siirtyy muihin kuviin (sitä ei poisteta).
+    Ensimmäinen ulkokuva tai vakiopaikan "Edestä vasemmalta" kuva tulee pääkuvaksi, jos sellaista ei ole.
+    """
+    tiedostot = [t for t in tiedostot if t]
+    if paikka not in Kuva.PAIKAN_TYYPPI:
+        paikka = ""
+    if paikka:
+        tiedostot = tiedostot[:1]
+        tyyppi = Kuva.PAIKAN_TYYPPI[paikka]
+    elif tyyppi not in dict(Kuva.TYYPIT):
+        tyyppi = "ulko"
+
+    lisatyt, virheelliset = [], []
+    with transaction.atomic():
+        on_paakuva = kierto.kuvat.filter(paakuva=True).exists()
+        seuraava = (kierto.kuvat.aggregate(m=Max("jarjestys"))["m"] or 0) + 1
+        for tiedosto in tiedostot:
+            try:
+                avain = kuvatallennus.tallenna_kuva(tiedosto, kierto.liike_id, kierto.pk)
+            except kuvatallennus.KuvaVirhe:
+                virheelliset.append(tiedosto.name)
+                continue
+            if paikka:
+                kierto.kuvat.filter(paikka=paikka).update(paikka="")
+            paa = not on_paakuva and tyyppi == "ulko" and (not paikka or paikka == "etu_vasen")
+            lisatyt.append(
+                Kuva.objects.create(
+                    kierto=kierto,
+                    avain=avain,
+                    tyyppi=tyyppi,
+                    paikka=paikka,
+                    jarjestys=Kuva.PAIKAN_JARJESTYS[paikka] if paikka else seuraava + len(lisatyt),
+                    paakuva=paa,
+                    luonut=kayttaja,
+                )
+            )
+            on_paakuva = on_paakuva or paa
+    return lisatyt, virheelliset
 
 
 def luo_tehtavat_tilalle(kierto, tila, kayttaja):

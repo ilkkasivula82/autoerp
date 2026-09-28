@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block otsikko %}{{ s }}: laskut{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi"><div>
+  <h1>{{ s.get_tyyppi_display }} {{ s.numero }}: {% if s.tyyppi == 'myynti' %}kaupan erittely ja laskut{% else %}maksut ja laskut{% endif %}</h1>
+  <div class="himmea">{{ s.pvm|pvm }} · {{ s.vp_nimi }} · {% for r in kohteet %}{{ r.merkki_malli }} {{ r.rekisterinumero }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+</div><div class="siirrot"><a class="nappi" href="{% url 'autot:sopimus' s.id %}">Sopimus</a>{% for r in kohteet %}<a class="nappi" href="{% url 'autot:kortti' r.kierto_id %}">Auto</a>{% endfor %}</div></div>
+
+<div class="ruudukko r2">
+<div class="kortti">
+  <h2>Miten {% if s.tyyppi == 'myynti' %}myyntihinta{% else %}ostohinta{% endif %} jakautuu <span class="merkki">sis. alv</span></h2>
+  <table>
+  {% if s.tyyppi == 'myynti' %}
+    <tr><td>Kaupan kohteen hinta</td><td class="num">{{ summat.kauppahinta|euro:True }}</td></tr>
+    {% if summat.toimistokulut %}<tr><td>Toimistokulut</td><td class="num">{{ summat.toimistokulut|euro:True }}</td></tr>{% endif %}
+    <tr><th>Myyntihinta yhteensä</th><th class="num">{{ summat.kateishinta|euro:True }}</th></tr>
+    {% for v in vaihdot %}
+    <tr><td>− Vaihtoauton hyvitys: {{ v.merkki_malli }} {{ v.rekisterinumero }}</td><td class="num">−{{ v.hinta|euro:True }}</td></tr>
+    {% if v.jaannosvelka %}<tr><td>+ Vaihtoauton jäännösvelka{% if v.jaannosvelan_haltija %} ({{ v.jaannosvelan_haltija }}){% endif %}<div class="pieni himmea">Liike maksaa rahoittajalle, joten asiakas maksaa sen osana kauppaa. Asiakkaalle jää vaihtoautosta hyväksi {{ v.nettohyvitys|euro:True }} ({{ v.hinta|euro:True }} − {{ v.jaannosvelka|euro:True }}).</div></td><td class="num">+{{ v.jaannosvelka|euro:True }}</td></tr>{% endif %}
+    {% endfor %}
+    <tr><th>{% if summat.maksettava < 0 %}Liike maksaa asiakkaalle{% else %}Asiakas maksaa yhteensä{% endif %}</th><th class="num">{% if summat.maksettava < 0 %}{{ palautettava|euro:True }}{% else %}{{ summat.maksettava|euro:True }}{% endif %}</th></tr>
+    {% if summat.maksettava > 0 and summat.etumaksu or summat.rahoitettava %}
+    <tr><td>&nbsp;&nbsp;käsiraha ennakkoon</td><td class="num">{{ summat.etumaksu|euro:True }}</td></tr>
+    <tr><td>&nbsp;&nbsp;rahoitusyhtiö{% if s.rahoitusyhtio %} ({{ s.rahoitusyhtio }}){% endif %}</td><td class="num">{{ summat.rahoitettava|euro:True }}</td></tr>
+    <tr><td>&nbsp;&nbsp;toimitushetkellä</td><td class="num">{{ summat.toimituksessa|euro:True }}</td></tr>
+    {% endif %}
+  {% else %}
+    <tr><td>Ajoneuvon käteishinta</td><td class="num">{{ summat.kauppahinta|euro:True }}</td></tr>
+    {% if summat.jaannosvelka %}<tr><td>− Jäännösvelka (liike maksaa rahoittajalle)</td><td class="num">−{{ summat.jaannosvelka|euro:True }}</td></tr>{% endif %}
+    <tr><th>Maksetaan myyjälle</th><th class="num">{{ summat.maksettava|euro:True }}</th></tr>
+  {% endif %}
+  </table>
+</div>
+
+<div class="kortti">
+  <h2>Arvonlisäverokäsittely</h2>
+  {% if s.tyyppi == 'myynti' %}
+    {% if verotus.alv %}
+      <p>Auto myydään <strong>yleisen arvonlisäverokannan</strong> mukaan ({{ alv_prosentti }} %). Myyntilaskuilla näytetään veron osuus.</p>
+      <table>
+        <tr><td>Veroton myyntihinta</td><td class="num">{{ verotus.veroton|euro:True }}</td></tr>
+        <tr><td>Alv {{ alv_prosentti }} %</td><td class="num">{{ verotus.vero|euro:True }}</td></tr>
+        <tr><th>Verollinen myyntihinta</th><th class="num">{{ verotus.verollinen|euro:True }}</th></tr>
+      </table>
+    {% else %}
+      <p>Auto myydään <strong>voittomarginaalijärjestelmässä</strong> (käytetyt tavarat). Laskuilla ei eritellä arvonlisäveroa, ja niissä on merkintä <em>”Voittomarginaalijärjestely – käytetyt tavarat”</em>.</p>
+      <p class="pieni himmea">Vero lasketaan voittomarginaalista (myyntihinta − ostohinta) ja ilmoitetaan kirjanpidossa{% if request.liike.marginaalimenettely == 'kuukausi' %} kuukausikohtaisesti{% else %} tavarakohtaisesti{% endif %}; auton kate ja vero-osuus näkyvät autokortilla.</p>
+    {% endif %}
+    {% for v in vaihdot %}
+      <p class="pieni"><strong>Vaihtoauto {{ v.merkki_malli }} {{ v.rekisterinumero }}</strong>: liike ostaa auton {{ v.hinta|euro:True }} hintaan{% if v.verotus.alv %} (sis. alv, veroton {{ v.verotus.veroton|euro:True }}, alv {{ v.verotus.vero|euro:True }}){% else %}; ostohinta on marginaaliverotuksen ostohinta, kun auto aikanaan myydään{% endif %}. Hyvitys kuitataan myyntihintaa vastaan (ei rahaliikennettä).</p>
+    {% endfor %}
+  {% else %}
+    {% for r in kohteet %}
+      <p>{% if r.alv_kasittely == 'alv' %}Auto ostetaan <strong>alv-kaupalla</strong>: myyjä laskuttaa arvonlisäveron, ja liike vähentää sen.{% else %}Auto ostetaan <strong>ilman arvonlisäveroa</strong> (yksityishenkilö tai marginaaliverotettu auto). Ostohinta on marginaaliverotuksen ostohinta, kun auto myydään.{% endif %}</p>
+    {% endfor %}
+  {% endif %}
+</div>
+</div>
+
+<div class="kortti" style="padding:0">
+  <div class="otsikkorivi" style="padding:16px 16px 0;margin-bottom:8px"><h2 style="margin:0">Laskut</h2>
+    {% if not laskut %}<form method="post" action="{% url 'autot:luo_laskut' s.id %}">{% csrf_token %}<button class="ensisijainen">Luo laskut sopimuksesta</button></form>{% endif %}
+  </div>
+  <div class="taulukko-kaari"><table>
+    <thead><tr><th>Lasku</th><th>Osa</th><th>Maksaja / saaja</th><th>Eräpäivä</th><th class="num">Summa</th><th>Tila</th><th></th></tr></thead>
+    {% for lk in laskut %}
+    <tr>
+      <td class="nowrap"><a href="{% url 'autot:lasku' lk.id %}">{{ lk.get_suunta_display }} {{ lk.numero }}</a></td>
+      <td>{{ lk.get_laji_display }}</td>
+      <td>{{ lk.osapuoli_nimi }}</td>
+      <td class="nowrap">{{ lk.erapaiva|pvm }}</td>
+      <td class="num">{{ lk.summa|euro:True }}</td>
+      <td>{% if lk.maksettu %}<span class="merkki ok">{% if lk.laji == 'vaihtoauto' %}Hyvitetty{% else %}Maksettu{% endif %} {{ lk.maksettu_pvm|pvm }}</span>{% else %}<span class="merkki info">Avoin</span>{% endif %}</td>
+      <td class="oikealle nowrap"><a class="nappi pieni" href="{% url 'autot:lasku' lk.id %}">Näytä / tulosta</a>
+        <form method="post" action="{% url 'autot:lasku_maksettu' lk.id %}" style="display:inline">{% csrf_token %}<input type="hidden" name="takaisin" value="{{ request.get_full_path }}"><button class="nappi pieni">{% if lk.maksettu %}Merkitse avoimeksi{% else %}Merkitse maksetuksi{% endif %}</button></form></td>
+    </tr>
+    {% empty %}<tr><td colspan="7" class="himmea">Sopimuksesta ei ole vielä laskuja{% if s.tyyppi == 'osto' and not summat.maksettava and not summat.jaannosvelka %} (ei maksettavaa){% endif %}.</td></tr>{% endfor %}
+  </table></div>
+  <p class="pieni himmea" style="padding:0 16px 12px">Myyntilaskut maksaa asiakas tai rahoitusyhtiö, ostolaskut liike (esim. vaihtoauton jäännösvelka rahoittajalle). Laskun voi tulostaa tai tallentaa PDF:ksi ja lähettää asiakkaalle.</p>
+</div>
+{% endblock %}

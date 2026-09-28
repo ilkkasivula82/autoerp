@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import autot, hallinta, kortti, raportit, sopimukset, tehtavat
+from .views import autot, hallinta, kortti, laskut, raportit, sopimukset, tarjoukset, tehtavat
 
 app_name = "autot"
 
@@ -34,6 +34,16 @@ urlpatterns = [
     path("sopimukset/", sopimukset.lista, name="sopimukset"),
     path("sopimukset/<int:sid>/", sopimukset.sopimus, name="sopimus"),
     path("sopimukset/vastapuoli/", sopimukset.vastapuoli, name="vastapuoli"),
+    path("sopimukset/<int:sid>/laskut/", laskut.sopimuksen_laskut, name="sopimuksen_laskut"),
+    path("sopimukset/<int:sid>/laskut/luo/", laskut.luo_laskut, name="luo_laskut"),
+    # Myyntitarjoukset
+    path("autot/<int:kid>/tarjous/", tarjoukset.uusi, name="uusi_tarjous"),
+    path("tarjoukset/<int:tid>/", tarjoukset.tarjous, name="tarjous"),
+    path("tarjoukset/<int:tid>/hylkaa/", tarjoukset.hylkaa, name="hylkaa_tarjous"),
+    # Laskut
+    path("laskut/", laskut.lista, name="laskut"),
+    path("laskut/<int:lid>/", laskut.lasku, name="lasku"),
+    path("laskut/<int:lid>/maksettu/", laskut.merkitse_maksetuksi, name="lasku_maksettu"),
     # Kuvat
     path("kuva/<int:kuva_id>/", kortti.nayta_kuva, name="kuva"),
     path("kuva/<int:kuva_id>/<slug:koko>/", kortti.nayta_kuva, name="kuva_koko"),
