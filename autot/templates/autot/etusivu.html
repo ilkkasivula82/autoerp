@@ -11,7 +11,7 @@
     <div class="luku-otsikko">Tarjolla, odottaa päätöstä</div><div class="luku">{{ tilamaarat|hae:"tarjottu"|default:0 }}</div></a>
   <a class="kortti" href="{% url 'autot:lista' %}" style="color:inherit;margin:0">
     <div class="luku-otsikko">Varastossa</div><div class="luku">{{ varastossa }}</div></a>
-  <div class="kortti" style="margin:0"><div class="luku-otsikko">Varastoon sidottu (osto + kulut)</div><div class="luku">{{ sidottu|euro }}</div></div>
+  <div class="kortti" style="margin:0"><div class="luku-otsikko">Varastoon sidottu (osto + kulut, {{ ALV_MERKINTA }})</div><div class="luku">{{ sidottu|euro }}</div></div>
   <a class="kortti" href="{% url 'autot:lista' %}?tila=myynnissa" style="color:inherit;margin:0">
     <div class="luku-otsikko">Myynnissä</div><div class="luku">{{ tilamaarat|hae:"myynnissa"|default:0 }}</div></a>
 </div>

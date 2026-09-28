@@ -66,20 +66,39 @@
 
   <div>
     <div class="kortti" id="kate">
-      <h2>Kate {% if kate.arvio %}<span class="merkki">arvio pyyntihinnalla</span>{% endif %}</h2>
+      <h2>Kate <span class="merkki">{% if brutto %}brutto, sis. alv{% else %}netto, alv 0{% endif %}</span>{% if kate.arvio %} <span class="merkki">arvio pyyntihinnalla</span>{% endif %}</h2>
       {% if kate %}
-        <div class="kate-rivi"><span>{% if kate.arvio %}Pyyntihinta{% else %}Myyntihinta{% endif %} {% if k.alv_kasittely == 'marginaali' %}(verollinen){% else %}(veroton){% endif %}</span><span>{{ kate.myynti|euro }}</span></div>
+        {% if brutto %}
+          {% with l=kate.brutto %}
+          <div class="kate-rivi"><span>{% if kate.arvio %}Pyyntihinta{% else %}Myyntihinta{% endif %} (sis. alv)</span><span>{{ l.myynti|euro }}</span></div>
+          <div class="kate-rivi"><span>– Ostohinta {% if k.alv_kasittely == 'alv' %}(sis. alv){% else %}<span class="pieni himmea">(marginaaliosto, ei vähennettävää alv:tä)</span>{% endif %}</span><span>{{ l.osto|euro }}</span></div>
+          <div class="kate-rivi"><span>– Kulut ennen myyntiä (sis. alv)</span><span>{{ l.kulut_ennen_myyntia|euro }}</span></div>
+          {% if l.jalkikulut %}
+          <div class="kate-rivi" style="font-weight:600"><span>= Kate myyntihetkellä</span><span>{{ l.kate_myyntihetki|euro }}</span></div>
+          <div class="kate-rivi"><span>– Jälkikulut (sis. alv)</span><span class="negatiivinen">{{ l.jalkikulut|euro }}</span></div>
+          {% endif %}
+          <div class="kate-rivi summa"><span>{% if l.jalkikulut %}Lopullinen kate{% else %}Kate{% endif %} (sis. alv)</span>
+            <span class="{% if l.kate >= 0 %}positiivinen{% else %}negatiivinen{% endif %}">{{ l.kate|euro }}</span></div>
+          <p class="pieni himmea" style="margin:8px 0 0">Netto (alv 0): {{ kate.kate|euro }}{% if kate.kate_prosentti is not None %} ({{ kate.kate_prosentti|floatformat:1 }} % nettomyynnistä){% endif %}</p>
+          {% endwith %}
+        {% else %}
+          <div class="kate-rivi"><span>{% if kate.arvio %}Pyyntihinta{% else %}Myyntihinta{% endif %} {% if k.alv_kasittely == 'marginaali' %}(sis. alv){% else %}(alv 0){% endif %}</span><span>{{ kate.myynti|euro }}</span></div>
+          {% if k.alv_kasittely == 'marginaali' %}
+          <div class="kate-rivi"><span>– Voittomarginaalivero ({{ request.liike.alv_prosentti|pilkku }} %)</span><span>{{ kate.marginaalivero|euro }}</span></div>
+          {% endif %}
+          <div class="kate-rivi"><span>– Ostohinta</span><span>{{ kate.osto|euro }}</span></div>
+          <div class="kate-rivi"><span>– Kulut ennen myyntiä (alv 0)</span><span>{{ kate.kulut_ennen_myyntia|euro }}</span></div>
+          {% if kate.jalkikulut %}
+          <div class="kate-rivi" style="font-weight:600"><span>= Kate myyntihetkellä</span><span>{{ kate.kate_myyntihetki|euro }}</span></div>
+          <div class="kate-rivi"><span>– Jälkikulut (alv 0)</span><span class="negatiivinen">{{ kate.jalkikulut|euro }}</span></div>
+          {% endif %}
+          <div class="kate-rivi summa"><span>{% if kate.jalkikulut %}Lopullinen kate{% else %}Kate{% endif %} (alv 0)</span>
+            <span class="{% if kate.kate >= 0 %}positiivinen{% else %}negatiivinen{% endif %}">{{ kate.kate|euro }}{% if kate.kate_prosentti is not None %} <span class="pieni">({{ kate.kate_prosentti|floatformat:1 }} %)</span>{% endif %}</span></div>
+          <p class="pieni himmea" style="margin:8px 0 0">Brutto (sis. alv): {{ kate.brutto.kate|euro }}</p>
+        {% endif %}
         {% if k.alv_kasittely == 'marginaali' %}
-        <div class="kate-rivi"><span>– Marginaalivero ({{ request.liike.alv_prosentti|pilkku }} %)</span><span>{{ kate.marginaalivero|euro }}</span></div>
+          <p class="pieni himmea" style="margin:4px 0 0">Voittomarginaalivero on auton oma osuus. Kuukausikohtaisessa menettelyssä ilmoitettava vero lasketaan kuukauden kaikista marginaaliostoista ja -myynneistä.</p>
         {% endif %}
-        <div class="kate-rivi"><span>– Ostohinta</span><span>{{ kate.osto|euro }}</span></div>
-        <div class="kate-rivi"><span>– Kulut ennen myyntiä (alv 0)</span><span>{{ kate.kulut_ennen_myyntia|euro }}</span></div>
-        {% if kate.jalkikulut %}
-        <div class="kate-rivi" style="font-weight:600"><span>= Kate myyntihetkellä</span><span>{{ kate.kate_myyntihetki|euro }}</span></div>
-        <div class="kate-rivi"><span>– Jälkikulut (myynnin jälkeen)</span><span class="negatiivinen">{{ kate.jalkikulut|euro }}</span></div>
-        {% endif %}
-        <div class="kate-rivi summa"><span>{% if kate.jalkikulut %}Lopullinen kate{% else %}Kate{% endif %}</span>
-          <span class="{% if kate.kate >= 0 %}positiivinen{% else %}negatiivinen{% endif %}">{{ kate.kate|euro }}{% if kate.kate_prosentti is not None %} <span class="pieni">({{ kate.kate_prosentti|floatformat:1 }} %)</span>{% endif %}</span></div>
       {% else %}
         <p class="himmea" style="margin:0">Kate lasketaan, kun ostohinta ja pyynti- tai myyntihinta on annettu.
           {% if k.tarjottu_hinta %}<br>Pyydetty hinta: <strong>{{ k.tarjottu_hinta|euro }}</strong>{% endif %}</p>

@@ -9,6 +9,7 @@ from django.views.decorators.http import require_POST
 from liikkeet.models import Kayttaja
 
 from .. import logiikka, palvelut
+from ..esitys import nayta_brutto
 from ..models import Kierto, Tehtava
 from .yhteiset import on_htmx, turvallinen_paluu
 
@@ -31,7 +32,7 @@ def etusivu(request):
             "omat": omat,
             "tilamaarat": tilamaarat,
             "varastossa": len(varasto),
-            "sidottu": sum((r.ostohinta or 0) + r.kulut_yht for r in varasto),
+            "sidottu": sum(r.sidottu(request.liike.alv_prosentti, nayta_brutto(request)) for r in varasto),
             "pisimmat": sorted(varasto, key=lambda r: -r.seisonut)[:5],
         },
     )

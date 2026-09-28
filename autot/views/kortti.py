@@ -15,6 +15,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from .. import kuvat as kuvatallennus
 from .. import logiikka, palvelut
+from ..esitys import nayta_brutto
 from ..forms import (
     AJONEUVO_KENTAT,
     KAUPPA_KENTAT,
@@ -117,6 +118,7 @@ def _yhteenveto(request, k):
     avoimet = list(k.tehtavat.filter(tehty=False).select_related("vastuu"))
     return {
         "kate": k.kate(request.liike.alv_prosentti),
+        "brutto": nayta_brutto(request),
         "polku": polku,
         "siirrot": siirrot,
         "jarjestys": jarjestys,
@@ -138,11 +140,10 @@ def _kulut(request, k, lomake=None):
     kulut = list(k.kulut.all())
     for r in kulut:
         r.jalki = logiikka.on_jalkikulu(r.pvm, k.myyntipvm)
-    yht, jalki = k.kulusummat()
+    summat = k.kulusummat()
     return {
         "kulut": kulut,
-        "kulut_yht": yht,
-        "jalki": jalki,
+        "summat": summat,
         "lomake": lomake or KuluLomake(alv_oletus=request.liike.alv_prosentti, initial={"pvm": timezone.localdate()}),
     }
 

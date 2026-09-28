@@ -3,10 +3,13 @@
 from django.contrib import messages
 from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from liikkeet.models import Kayttaja
 
 from .. import logiikka
+from ..esitys import hinnat, nayta_brutto
 from ..forms import (
     KayttajaLomake,
     KoodiLomake,
@@ -18,7 +21,7 @@ from ..forms import (
     YritysLomake,
 )
 from ..models import AjoneuvonVaruste, Kierto, Koodi, Tehtavapohja, Varuste, Varustekategoria, Yritys
-from .yhteiset import rooli_vaaditaan
+from .yhteiset import rooli_vaaditaan, turvallinen_paluu
 
 # ---------- yritykset ----------
 
@@ -54,15 +57,16 @@ def yritys(request, yid):
         Kierto.objects.filter(Q(toimittaja=y) | Q(asiakas=y)).select_related("ajoneuvo").kulusummilla().order_by("-id")
     )
     alv = request.liike.alv_prosentti
+    brutto = nayta_brutto(request)
     kate_ostetuista = 0
     ostettu = myyty = 0
     for r in kaupat:
         r.suunta = "osto" if r.toimittaja_id == y.pk else "myynti"
-        r.kate_ = r.kate(alv)
+        r.h = hinnat(r, alv, brutto)
         if r.suunta == "osto" and r.ostohinta is not None:
             ostettu += 1
-            if r.kate_ and not r.kate_.arvio:
-                kate_ostetuista += r.kate_.kate
+            if r.h.luvut and not r.h.arvio:
+                kate_ostetuista += r.h.luvut.kate
         if r.asiakas_id == y.pk and r.myyntihinta is not None:
             myyty += 1
     return render(
@@ -215,3 +219,14 @@ def asetukset(request):
             "koodiryhmat": ryhmat,
         },
     )
+
+
+# ---------- käyttäjän asetukset ----------
+
+
+@require_POST
+def hintanakyma(request):
+    """Rahaluvut bruttona (sis. alv) tai nettona (alv 0). Tallennetaan käyttäjälle."""
+    request.user.nayta_brutto = request.POST.get("brutto") == "1"
+    request.user.save(update_fields=["nayta_brutto"])
+    return turvallinen_paluu(request, request.POST.get("takaisin"), reverse("autot:etusivu"))

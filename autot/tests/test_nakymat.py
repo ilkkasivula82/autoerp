@@ -1,17 +1,19 @@
 """Toiminnallisuus näkymien kautta: uusi auto, palaava auto, tilasiirrot, kulut, kuvat, tehtävät."""
 
 from datetime import timedelta
+from decimal import Decimal
 from io import StringIO
 
 from django.core.files.storage import default_storage
 from django.core.management import call_command
-from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.db import IntegrityError, connection, transaction
+from django.db.migrations.executor import MigrationExecutor
+from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from autot import palvelut
-from autot.models import Ajoneuvo, Kierto, Kulu, Kuva, Muutosloki, Tehtava, Tilahistoria, Yritys
+from autot.models import Ajoneuvo, Kierto, Kulu, Kulusummat, Kuva, Muutosloki, Tehtava, Tilahistoria, Yritys
 from liikkeet.models import Kayttaja, Liike
 from liikkeet.rajaus import liike_kaytossa
 
@@ -322,7 +324,9 @@ class KuluJaKateTestit(Pohja):
         self.assertEqual(jalkeen.kate_myyntihetki, ennen.kate)
         # Annotaatio antaa saman tuloksen kuin rivikohtainen laskenta
         annotoitu = Kierto.objects.kulusummilla().get(pk=kierto.pk)
-        self.assertEqual(annotoitu.kulusummat(), (42_300, 30_000))
+        # Verolliset: 123,00 * 1,255 = 154,365 -> 154,37 ja 300 * 1,255 = 376,50
+        self.assertEqual(annotoitu.kulusummat(), Kulusummat(42_300, 30_000, 15_437 + 37_650, 37_650))
+        self.assertEqual(kierto.kulusummat(), annotoitu.kulusummat())
         self.assertEqual(annotoitu.kate(), jalkeen)
 
     def test_kulun_poisto(self):
@@ -607,7 +611,7 @@ class SivutTestit(TestCase):
         yht = vastaus.context["yht"]
         # Demossa neljä myytyä: Mercedes, Audi (vanha kierros), Peugeot, Tesla
         self.assertEqual(yht["n"], 4)
-        self.assertEqual(yht["kate"], sum(r.kate_.kate for r in vastaus.context["rivit"]))
+        self.assertEqual(yht["kate"], sum(r.luvut.kate for r in vastaus.context["rivit"]))
 
 
 class KomentoTestit(TestCase):
@@ -645,3 +649,129 @@ class TerveysTestit(TestCase):
         vastaus = self.client.get("/terveys/")
         self.assertEqual(vastaus.status_code, 200)
         self.assertEqual(vastaus.content, b"ok")
+
+
+class HintanakymaTestit(Pohja):
+    """Käyttäjä valitsee, näytetäänkö rahaluvut nettona (alv 0) vai bruttona (sis. alv)."""
+
+    def valitse(self, brutto, takaisin="/autot/"):
+        return self.client.post(reverse("autot:hintanakyma"), {"brutto": "1" if brutto else "0", "takaisin": takaisin})
+
+    def test_valinta_tallentuu_kayttajalle(self):
+        self.assertFalse(Kayttaja.objects.get(pk=self.d.admin.pk).nayta_brutto)
+        vastaus = self.valitse(True)
+        self.assertRedirects(vastaus, "/autot/", fetch_redirect_response=False)
+        self.assertTrue(Kayttaja.objects.get(pk=self.d.admin.pk).nayta_brutto)
+        self.valitse(False)
+        self.assertFalse(Kayttaja.objects.get(pk=self.d.admin.pk).nayta_brutto)
+
+    def test_ei_ohjaa_ulkopuolelle(self):
+        vastaus = self.valitse(True, takaisin="https://paha.example/")
+        self.assertEqual(vastaus["Location"], reverse("autot:etusivu"))
+
+    def test_vain_post(self):
+        self.assertEqual(self.client.get(reverse("autot:hintanakyma")).status_code, 405)
+
+    def test_kortin_kate(self):
+        # Apudata: marginaali, osto 10 000, pyynti 13 000, kulu 123 alv 0 (154,37 sis. alv)
+        k = self.d.kierto
+        netto = self.client.get(self.kortti(k.pk))
+        self.assertContains(netto, "netto, alv 0")
+        self.assertContains(netto, "Voittomarginaalivero")
+        self.valitse(True)
+        brutto = self.client.get(self.kortti(k.pk))
+        self.assertContains(brutto, "brutto, sis. alv")
+        self.assertNotContains(brutto, "– Voittomarginaalivero")
+        # 13 000 - 10 000 - 154,37 = 2 845,63 -> 2 846 €
+        self.assertContains(brutto, "2 846 €")
+        self.assertContains(brutto, "Netto (alv 0)")
+
+    def test_lista_ja_raportti_bruttona(self):
+        k = self.d.kierto
+        k.alv_kasittely = "alv"
+        k.save()
+        palvelut.siirra_tila(
+            k, "myyty", self.d.admin, asiakas=self.d.asiakas, myyntihinta=1_200_000, myyntipvm=timezone.localdate()
+        )
+        raportti = reverse("autot:raportit") + "?alku=2000-01-01&loppu=2100-01-01"
+
+        netto = self.client.get(reverse("autot:lista") + "?n=myydyt")
+        rivi = netto.context["rivit"][0]
+        self.assertEqual((rivi.h.osto, rivi.h.myynti, rivi.h.kulut), (1_000_000, 1_200_000, 12_300))
+        self.assertEqual(self.client.get(raportti).context["yht"]["kate"], 1_200_000 - 1_000_000 - 12_300)
+
+        self.valitse(True)
+        brutto = self.client.get(reverse("autot:lista") + "?n=myydyt")
+        rivi = brutto.context["rivit"][0]
+        self.assertEqual((rivi.h.osto, rivi.h.myynti, rivi.h.kulut), (1_255_000, 1_506_000, 15_437))
+        self.assertContains(brutto, "sis. alv")
+        vastaus = self.client.get(raportti)
+        self.assertEqual(vastaus.context["yht"]["kate"], 1_506_000 - 1_255_000 - 15_437)
+        self.assertEqual(vastaus.context["yht"]["myynti"], 1_506_000)
+
+    def test_raportti_ohittaa_myynnin_ilman_ostohintaa(self):
+        Kierto.objects.filter(pk=self.d.kierto.pk).update(
+            ostohinta=None, myyntihinta=1_000_000, myyntipvm=timezone.localdate()
+        )
+        vastaus = self.client.get(reverse("autot:raportit") + "?alku=2000-01-01&loppu=2100-01-01")
+        self.assertEqual(vastaus.status_code, 200)
+        self.assertIsNone(vastaus.context["yht"])
+
+    def test_sidottu_paaoma(self):
+        k = Kierto.objects.kulusummilla().get(pk=self.d.kierto.pk)
+        alv = self.d.liike.alv_prosentti
+        self.assertEqual(k.sidottu(alv), 1_000_000 + 12_300)
+        self.assertEqual(k.sidottu(alv, brutto=True), 1_000_000 + 15_437)  # marginaaliosto ilman alv:tä
+        k.alv_kasittely = "alv"
+        self.assertEqual(k.sidottu(alv, brutto=True), 1_255_000 + 15_437)
+
+    def test_syotetty_verollinen_kulu_sailyy_sentilleen(self):
+        # 124,00 sis. alv -> 98,80 alv 0; takaisin laskettuna 123,99, mutta syötetty summa säilyy
+        self.client.post(
+            reverse("autot:lisaa_kulu", args=[self.d.kierto.pk]),
+            {
+                "tyyppi": "pesu",
+                "summa": "124",
+                "summa_on": "verollinen",
+                "alv_prosentti": "25,5",
+                "pvm": "2026-03-01",
+            },
+        )
+        kulu = Kulu.objects.get(tyyppi="pesu")
+        self.assertEqual((kulu.summa_veroton, kulu.summa_verollinen), (9_880, 12_400))
+        self.client.post(
+            reverse("autot:lisaa_kulu", args=[self.d.kierto.pk]),
+            {
+                "tyyppi": "katsastus",
+                "summa": "50",
+                "summa_on": "veroton",
+                "alv_prosentti": "0",
+                "pvm": "2026-03-01",
+            },
+        )
+        kulu = Kulu.objects.get(tyyppi="katsastus")
+        self.assertEqual((kulu.summa_veroton, kulu.summa_verollinen), (5_000, 5_000))
+        vastaus = self.client.get(self.kortti(self.d.kierto.pk, "kulut"))
+        self.assertContains(vastaus, "124,00 €")
+
+
+class KulunVerollinenMigraatioTesti(TransactionTestCase):
+    """Data-migraatio 0002 täyttää olemassa olevien kulujen verollisen summan."""
+
+    def test_migraatio(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate([("autot", "0001_initial")])
+        vanhat = executor.loader.project_state([("autot", "0001_initial")]).apps
+        liike = vanhat.get_model("liikkeet", "Liike").objects.create(nimi="M")
+        ajoneuvo = vanhat.get_model("autot", "Ajoneuvo").objects.create(liike=liike, merkki="A", malli="B")
+        kierto = vanhat.get_model("autot", "Kierto").objects.create(liike=liike, ajoneuvo=ajoneuvo)
+        VanhaKulu = vanhat.get_model("autot", "Kulu")
+        VanhaKulu.objects.create(liike=liike, kierto=kierto, summa_veroton=12_300, alv_prosentti=Decimal("25.5"))
+        VanhaKulu.objects.create(liike=liike, kierto=kierto, summa_veroton=5_000, alv_prosentti=Decimal("0"))
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        self.assertEqual(
+            sorted(Kulu.kaikki.values_list("summa_verollinen", flat=True)),
+            [5_000, 15_437],
+        )

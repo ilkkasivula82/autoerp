@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from .. import logiikka, palvelut
+from ..esitys import hinnat, nayta_brutto
 from ..forms import UusiAutoLomake
 from ..models import Ajoneuvo, Kierto, Koodi, Kuva, Tehtava
 from .yhteiset import kortille
@@ -73,17 +74,18 @@ def lista(request):
     ).order_by("-tila_muutettu", "-id")
 
     alv = request.liike.alv_prosentti
+    brutto = nayta_brutto(request)
     tanaan = timezone.localdate()
     rivit = list(qs)
     yht = {"osto": 0, "kulut": 0, "kate": 0}
     for r in rivit:
-        r.kate_ = r.kate(alv)
+        r.h = hinnat(r, alv, brutto)
         r.tilassa = logiikka.paivia_valissa(timezone.localtime(r.tila_muutettu).date(), tanaan)
         r.varastossa = logiikka.paivia_valissa(r.ostopvm, tanaan) if r.tila in logiikka.VARASTOTILAT else None
-        yht["osto"] += r.ostohinta or 0
-        yht["kulut"] += r.kulut_yht or 0
-        if r.kate_:
-            yht["kate"] += r.kate_.kate
+        yht["osto"] += r.h.osto or 0
+        yht["kulut"] += r.h.kulut
+        if r.h.luvut:
+            yht["kate"] += r.h.luvut.kate
 
     return render(
         request,

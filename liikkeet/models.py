@@ -53,6 +53,8 @@ class Kayttaja(AbstractBaseUser):
     nimi = models.CharField(max_length=200)
     rooli = models.CharField(max_length=20, choices=Rooli.choices, default=Rooli.MYYNTI)
     is_active = models.BooleanField("aktiivinen", default=True)
+    # Näytetäänkö rahaluvut bruttona (sis. alv) vai nettona (ilman alv:tä)
+    nayta_brutto = models.BooleanField("luvut bruttona", default=False)
     luotu = models.DateTimeField(auto_now_add=True)
 
     objects = KayttajaManager()

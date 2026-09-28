@@ -45,6 +45,7 @@ urlpatterns = [
     path("hallinta/varusteet/", hallinta.varusteet, name="varusteet"),
     path("hallinta/tehtavapohjat/", hallinta.tehtavapohjat, name="tehtavapohjat"),
     path("hallinta/asetukset/", hallinta.asetukset, name="asetukset"),
+    path("hintanakyma/", hallinta.hintanakyma, name="hintanakyma"),
     # Raportit
     path("raportit/", raportit.index, name="raportit"),
 ]

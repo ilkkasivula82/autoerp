@@ -21,6 +21,10 @@
   <a href="{% url 'autot:raportit' %}" class="{% if nimi == 'raportit' %}aktiivinen{% endif %}">Raportit</a>
   <a href="{% url 'autot:varusteet' %}" class="{% if nimi in 'varusteet tehtavapohjat kayttajat asetukset' %}aktiivinen{% endif %}">Hallinta</a>
   <span class="tila-vali"></span>
+  <form method="post" action="{% url 'autot:hintanakyma' %}" class="hintanakyma" title="Rahaluvut ilman alv:tä tai alv:n kanssa">
+    {% csrf_token %}<input type="hidden" name="takaisin" value="{{ request.get_full_path }}">
+    <button name="brutto" value="0" class="{% if not BRUTTO %}valittu{% endif %}" aria-pressed="{% if BRUTTO %}false{% else %}true{% endif %}">Netto</button><button name="brutto" value="1" class="{% if BRUTTO %}valittu{% endif %}" aria-pressed="{% if BRUTTO %}true{% else %}false{% endif %}">Brutto</button>
+  </form>
   <span class="kayttaja">{{ user.nimi }} ·
     <form method="post" action="{% url 'kirjaudu_ulos' %}" class="inline">{% csrf_token %}<button class="linkki ulos">Ulos</button></form>
   </span>

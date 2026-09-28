@@ -158,16 +158,55 @@ def verolliseksi(veroton_sentit, alv_prosentti):
 
 
 @dataclass(frozen=True)
+class Luvut:
+    """Katelaskelman luvut yhdessä esitystavassa: netto (ilman alv:tä) tai brutto (sis. alv).
+
+    Brutto:
+      - myynti: verollinen myyntihinta (marginaalikaupassa myyntihinta sellaisenaan)
+      - osto: ALV-kaupassa verollinen ostohinta, marginaalikaupassa ostohinta (siinä ei ole vähennettävää veroa)
+      - kulut: jokainen kulu omalla ALV-kannallaan verollisena
+      - kate = myynti - osto - kulut, eli kate sisältäen alv:n
+    Netto:
+      - myynti ilman veroa (marginaalikaupassa myyntihinta - marginaalivero), osto ja kulut verottomina
+    """
+
+    brutto: bool
+    myynti: int
+    osto: int
+    kulut: int  # kaikki kulut, myös jälkikulut
+    jalkikulut: int
+    kate: int  # lopullinen kate
+
+    @property
+    def kulut_ennen_myyntia(self):
+        return self.kulut - self.jalkikulut
+
+    @property
+    def kate_myyntihetki(self):
+        return self.kate + self.jalkikulut
+
+    @property
+    def kate_prosentti(self):
+        if not self.myynti:
+            return None
+        return Decimal(self.kate * 100) / Decimal(self.myynti)
+
+
+@dataclass(frozen=True)
 class Kate:
     arvio: bool  # laskettu pyyntihinnalla, ei toteutuneella myynnillä
+    alv_kasittely: str
     myynti: int  # marginaali: verollinen, alv: veroton
     verollinen_myynti: int
     marginaalivero: int
     nettomyynti: int  # myynti ilman veroa
-    osto: int
+    osto: int  # marginaali: sellaisenaan, alv: veroton
+    verollinen_osto: int
     kulut: int  # kaikki kulut verottomina, myös jälkikulut
     jalkikulut: int  # näistä myyntipäivän jälkeen kirjatut
-    kate: int  # lopullinen kate
+    verolliset_kulut: int
+    verolliset_jalkikulut: int
+    kate: int  # lopullinen kate (netto)
 
     @property
     def hankintameno(self):
@@ -188,8 +227,34 @@ class Kate:
             return None
         return Decimal(self.kate * 100) / Decimal(self.nettomyynti)
 
+    def luvut(self, brutto=False):
+        """Luvut valitussa esitystavassa (ks. Luvut)."""
+        if not brutto:
+            return Luvut(False, self.nettomyynti, self.osto, self.kulut, self.jalkikulut, self.kate)
+        myynti, osto, kulut = self.verollinen_myynti, self.verollinen_osto, self.verolliset_kulut
+        return Luvut(True, myynti, osto, kulut, self.verolliset_jalkikulut, myynti - osto - kulut)
 
-def laske_kate(*, ostohinta, myyntihinta, alv_kasittely, kulut_veroton, alv_prosentti, jalkikulut=0, arvio=False):
+    @property
+    def netto(self):
+        return self.luvut(False)
+
+    @property
+    def brutto(self):
+        return self.luvut(True)
+
+
+def laske_kate(
+    *,
+    ostohinta,
+    myyntihinta,
+    alv_kasittely,
+    kulut_veroton,
+    alv_prosentti,
+    jalkikulut=0,
+    kulut_verollinen=None,
+    jalkikulut_verollinen=None,
+    arvio=False,
+):
     """Laskee yhden kierroksen katteen.
 
     Marginaaliverotus (käytetyn tavaran erityisjärjestely):
@@ -199,9 +264,14 @@ def laske_kate(*, ostohinta, myyntihinta, alv_kasittely, kulut_veroton, alv_pros
       - kunnostuskulut eivät pienennä veron laskentaperustetta, mutta niiden
         ALV vähennetään, joten katteessa ne ovat verottomina
       - kate = myyntihinta - vero - ostohinta - kulut (alv 0)
+      Vero on auton oma osuus. Kuukausikohtaisessa menettelyssä ilmoitettava vero
+      lasketaan kuukauden kaikista marginaaliostoista ja -myynneistä yhteensä.
     Normaali ALV:
       - osto- ja myyntihinta sekä kulut verottomina
       - kate = myynti - osto - kulut
+
+    kulut_verollinen / jalkikulut_verollinen: kulut verollisina (kukin omalla
+    ALV-kannallaan) brutto-esitystä varten. Jos puuttuu, lasketaan kannalla alv_prosentti.
 
     Rahat sentteinä, alv_prosentti esim. Decimal('25.5').
     Palauttaa Kate-olion tai None, jos osto- tai myyntihinta puuttuu.
@@ -211,28 +281,38 @@ def laske_kate(*, ostohinta, myyntihinta, alv_kasittely, kulut_veroton, alv_pros
     r = Decimal(str(alv_prosentti or 0))
     kulut = int(kulut_veroton or 0)
     jalkikulut = int(jalkikulut or 0)
+    if kulut_verollinen is None:
+        kulut_verollinen = verolliseksi(kulut, r)
+    if jalkikulut_verollinen is None:
+        jalkikulut_verollinen = verolliseksi(jalkikulut, r)
 
     if alv_kasittely == "alv":
         vero = 0
         nettomyynti = myyntihinta
         verollinen = verolliseksi(myyntihinta, r)
+        verollinen_osto = verolliseksi(ostohinta, r)
     elif alv_kasittely == "marginaali":
         voittomarginaali = myyntihinta - ostohinta
         vero = pyorista_sentit(Decimal(voittomarginaali) * r / (100 + r)) if voittomarginaali > 0 else 0
         nettomyynti = myyntihinta - vero
         verollinen = myyntihinta
+        verollinen_osto = ostohinta
     else:
         raise ValueError(f"Tuntematon ALV-käsittely: {alv_kasittely}")
 
     return Kate(
         arvio=arvio,
+        alv_kasittely=alv_kasittely,
         myynti=myyntihinta,
         verollinen_myynti=verollinen,
         marginaalivero=vero,
         nettomyynti=nettomyynti,
         osto=ostohinta,
+        verollinen_osto=verollinen_osto,
         kulut=kulut,
         jalkikulut=jalkikulut,
+        verolliset_kulut=int(kulut_verollinen),
+        verolliset_jalkikulut=int(jalkikulut_verollinen),
         kate=nettomyynti - ostohinta - kulut,
     )
 

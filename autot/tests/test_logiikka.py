@@ -210,3 +210,61 @@ class RekisteriTestit(SimpleTestCase):
 
     def test_hakuavain(self):
         self.assertEqual(logiikka.rekisteri_hakuavain("abc-123"), logiikka.rekisteri_hakuavain("ABC 123"))
+
+
+class BruttoNettoTestit(SimpleTestCase):
+    """Luvut nettona (alv 0) ja bruttona (sis. alv)."""
+
+    def test_marginaalikauppa(self):
+        # Osto 10 000, myynti 12 510, kulut 800 alv 0 (1 004 sis. alv)
+        k = kate(ostohinta=1_000_000, myyntihinta=1_251_000, kulut_veroton=80_000)
+        netto, brutto = k.luvut(False), k.luvut(True)
+        self.assertEqual((netto.myynti, netto.osto, netto.kulut, netto.kate), (1_200_000, 1_000_000, 80_000, 120_000))
+        # Marginaaliostossa ei ole vähennettävää veroa: osto on sama molemmissa
+        self.assertEqual((brutto.myynti, brutto.osto, brutto.kulut), (1_251_000, 1_000_000, 100_400))
+        self.assertEqual(brutto.kate, 150_600)
+        # Kun kaikki samalla kannalla ja marginaali positiivinen: brutto = netto * (1 + r)
+        self.assertEqual(brutto.kate, logiikka.verolliseksi(netto.kate, ALV))
+
+    def test_alv_kauppa(self):
+        k = kate(alv_kasittely="alv", ostohinta=1_000_000, myyntihinta=1_200_000, kulut_veroton=80_000)
+        netto, brutto = k.netto, k.brutto
+        self.assertEqual((netto.myynti, netto.osto, netto.kulut, netto.kate), (1_200_000, 1_000_000, 80_000, 120_000))
+        self.assertEqual((brutto.myynti, brutto.osto, brutto.kulut), (1_506_000, 1_255_000, 100_400))
+        self.assertEqual(brutto.kate, 150_600)
+
+    def test_tappiollinen_marginaalikauppa(self):
+        # Veroa ei tule, joten myynti on sama molemmissa; kulujen alv näkyy vain bruttona
+        k = kate(ostohinta=1_500_000, myyntihinta=1_400_000, kulut_veroton=20_000)
+        self.assertEqual(k.netto.kate, -120_000)
+        self.assertEqual(k.brutto.kate, -125_100)
+        self.assertEqual(k.netto.myynti, k.brutto.myynti)
+
+    def test_kulut_omilla_alv_kannoilla(self):
+        # Kulut: 100 € alv 25,5 % (125,50) + 100 € alv 0 % (100,00) = 225,50 sis. alv
+        k = kate(ostohinta=0, myyntihinta=100_000, kulut_veroton=20_000, kulut_verollinen=22_550)
+        self.assertEqual(k.brutto.kulut, 22_550)
+        self.assertEqual(k.netto.kulut, 20_000)
+
+    def test_jalkikulut_bruttona(self):
+        k = kate(
+            ostohinta=1_000_000,
+            myyntihinta=1_251_000,
+            kulut_veroton=100_000,
+            jalkikulut=30_000,
+            kulut_verollinen=125_500,
+            jalkikulut_verollinen=37_650,
+        )
+        b = k.brutto
+        self.assertEqual(b.jalkikulut, 37_650)
+        self.assertEqual(b.kulut_ennen_myyntia, 87_850)
+        self.assertEqual(b.kate_myyntihetki, b.kate + 37_650)
+
+    def test_verolliset_kulut_oletuksena_yleisella_kannalla(self):
+        k = kate(ostohinta=0, myyntihinta=0, kulut_veroton=10_000, jalkikulut=1_000)
+        self.assertEqual((k.verolliset_kulut, k.verolliset_jalkikulut), (12_550, 1_255))
+
+    def test_kateprosentti_oman_myynnin_mukaan(self):
+        k = kate(ostohinta=1_000_000, myyntihinta=1_251_000)
+        self.assertEqual(k.netto.kate_prosentti, Decimal(200_000 * 100) / Decimal(1_200_000))
+        self.assertEqual(k.brutto.kate_prosentti, Decimal(251_000 * 100) / Decimal(1_251_000))

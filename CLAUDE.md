@@ -27,6 +27,11 @@ Tuotanto Renderissä (`render.yaml`), kuvat Cloudflare R2:ssa.
    pyöristys `Decimal` + `ROUND_HALF_UP`.
 6. **Katelaskenta `autot/logiikka.py`:ssä**, ilman Django-riippuvuuksia, ja jokaiselle säännölle yksikkötesti
    (`test_logiikka.py`). Marginaaliverotus: vero = (myynti − osto) × r / (100 + r), jos voittomarginaali > 0.
+   Tämä on auton oma vero-osuus (tavarakohtainen menettely); kuukausikohtaisessa menettelyssä ilmoitettava vero
+   lasketaan kuukauden kaikista marginaaliostoista ja -myynneistä.
+   Rahaluvut näytetään käyttäjän valinnan mukaan nettona tai bruttona: näkymät käyttävät `autot/esitys.py`:tä
+   (`hinnat`, `nayta_brutto`) ja `Kate.luvut(brutto)`:a, eivät laske alv:tä itse. Otsikoissa kerrotaan
+   esitystapa (`ALV_MERKINTA`).
 7. **Kuvat vain `autot/kuvat.py`:n kautta** (Djangon `default_storage`: R2 tuotannossa, levy kehityksessä).
    Kuvia ei palvella suoraan ämpäristä, vaan näkymä tarkistaa liikkeen ja ohjaa allekirjoitettuun osoitteeseen.
 8. **HTMX:** välilehdet ja pienet päivitykset palauttavat osapohjan (`_`-alkuiset pohjat). Jokaisen lomakkeen

@@ -48,12 +48,27 @@ Testit: `autot/tests/test_monivuokraajuus.py`.
 
 ### Katelaskenta (`autot/logiikka.py`)
 
-- **Marginaaliverotus:** vero = (myyntihinta − ostohinta) × 25,5 / 125,5, jos voittomarginaali > 0.
+- **Marginaaliverotus:** auton voittomarginaalivero = (myyntihinta − ostohinta) × 25,5 / 125,5, jos marginaali > 0.
   Kulut eivät pienennä veron laskentaperustetta, mutta niiden ALV vähennetään, joten ne ovat katteessa verottomina.
-  Kate = myyntihinta − vero − ostohinta − kulut (alv 0).
+  Kate (netto) = myyntihinta − vero − ostohinta − kulut (alv 0).
 - **Normaali ALV:** kaikki verottomina, kate = myynti − osto − kulut.
-- ALV-kanta on liikkeen asetus (Hallinta → Asetukset). Laskentasäännöt kannattaa käydä läpi kirjanpitäjän kanssa;
-  marginaalivero lasketaan autokohtaisesti.
+- ALV-kanta on liikkeen asetus (Hallinta → Asetukset).
+
+**Menettely.** Autokohtainen vero vastaa tavarakohtaista menettelyä. Kuukausikohtaisessa menettelyssä (autokaupan
+yleisin) ilmoitettava vero lasketaan kuukauden kaikkien marginaaliostojen ja -myyntien erotuksesta. Auton oma
+vero-osuus on silloinkin käyttökelpoinen yksittäisen auton katteen arvioon, mutta se ei ole ilmoitettava vero.
+
+**Netto vai brutto.** Yläpalkin valitsimella (Netto / Brutto) käyttäjä valitsee, näytetäänkö rahaluvut listoilla,
+kortilla ja raporteilla ilman alv:tä vai alv:n kanssa. Valinta tallentuu käyttäjälle.
+
+| | Netto (alv 0) | Brutto (sis. alv) |
+|---|---|---|
+| Myynti | marginaali: myyntihinta − vero; ALV: veroton | marginaali: myyntihinta; ALV: veroton × (1 + alv) |
+| Osto | ostohinta (ALV: veroton) | marginaali: ostohinta (ei vähennettävää veroa); ALV: verollinen |
+| Kulut | verottomina | verollisina, kukin omalla ALV-kannallaan (syötetty summa säilyy sentilleen) |
+| Kate | myynti − osto − kulut | myynti − osto − kulut |
+
+Myyntisaatavat näytetään aina verollisina.
 
 ## Tuotanto (Render)
 

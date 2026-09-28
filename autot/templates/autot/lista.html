@@ -32,7 +32,7 @@
     {% else %}
       <th class="num">Ostohinta</th><th class="num piilota-mobiili">Kulut</th>
       <th class="num">{% if nakyma == 'myydyt' %}Myyntihinta{% else %}Pyyntihinta{% endif %}</th>
-      <th class="num">Kate</th><th class="num">Päiviä</th>
+      <th class="num">Kate <span class="pieni" style="text-transform:none">({{ ALV_MERKINTA }})</span></th><th class="num">Päiviä</th>
     {% endif %}
     <th class="num piilota-mobiili">Tehtäviä</th>
   </tr></thead>
@@ -51,10 +51,10 @@
       <td class="num">{{ r.tarjottu_hinta|euro }}</td>
       <td class="num">{{ r.tilassa|default_if_none:"–" }} pv</td>
     {% else %}
-      <td class="num">{{ r.ostohinta|euro }}</td>
-      <td class="num piilota-mobiili">{% if r.kulut_yht %}{{ r.kulut_yht|euro }}{% else %}–{% endif %}</td>
-      <td class="num">{% if r.myyntihinta is not None %}{{ r.myyntihinta|euro }}{% else %}{{ r.pyyntihinta|euro }}{% endif %}</td>
-      <td class="num">{% if r.kate_ %}<span class="{% if r.kate_.kate >= 0 %}positiivinen{% else %}negatiivinen{% endif %}">{{ r.kate_.kate|euro }}</span>{% if r.kate_.arvio %}<div class="pieni himmea">arvio</div>{% endif %}{% else %}–{% endif %}</td>
+      <td class="num">{{ r.h.osto|euro }}</td>
+      <td class="num piilota-mobiili">{% if r.h.kulut %}{{ r.h.kulut|euro }}{% else %}–{% endif %}</td>
+      <td class="num">{{ r.h.myynti|euro }}</td>
+      <td class="num">{% if r.h.luvut %}<span class="{% if r.h.luvut.kate >= 0 %}positiivinen{% else %}negatiivinen{% endif %}">{{ r.h.luvut.kate|euro }}</span>{% if r.h.arvio %}<div class="pieni himmea">arvio</div>{% endif %}{% else %}–{% endif %}</td>
       <td class="num">{% if r.varastossa is not None %}<span class="merkki {% if r.varastossa > 60 %}virhe{% elif r.varastossa > 30 %}varoitus{% endif %}">{{ r.varastossa }}</span>{% else %}–{% endif %}</td>
     {% endif %}
     <td class="num piilota-mobiili">{{ r.avoimet|default:"" }}</td>
@@ -65,7 +65,7 @@
   </tbody>
   {% if rivit and nakyma != 'tarjotut' %}
   <tfoot><tr>
-    <td></td><td>{{ rivit|length }} autoa</td><td></td><td class="piilota-mobiili"></td>
+    <td></td><td>{{ rivit|length }} autoa <span class="pieni himmea">({{ ALV_MERKINTA }})</span></td><td></td><td class="piilota-mobiili"></td>
     <td class="num">{{ yht.osto|euro }}</td><td class="num piilota-mobiili">{{ yht.kulut|euro }}</td><td></td>
     <td class="num">{{ yht.kate|euro }}</td><td></td><td class="piilota-mobiili"></td>
   </tr></tfoot>

@@ -7,6 +7,7 @@ from django.shortcuts import render
 from django.utils import timezone
 
 from .. import logiikka
+from ..esitys import nayta_brutto
 from ..models import Kierto
 
 
@@ -23,9 +24,9 @@ def _ryhmittele(rivit, avain):
         nimi = avain(r) or "–"
         o = tulos.setdefault(nimi, {"nimi": nimi, "n": 0, "myynti": 0, "kate": 0, "jalki": 0, "paivat": []})
         o["n"] += 1
-        o["myynti"] += r.kate_.nettomyynti
-        o["kate"] += r.kate_.kate
-        o["jalki"] += r.kate_.jalkikulut
+        o["myynti"] += r.luvut.myynti
+        o["kate"] += r.luvut.kate
+        o["jalki"] += r.luvut.jalkikulut
         if r.kiertoaika is not None:
             o["paivat"].append(r.kiertoaika)
     for o in tulos.values():
@@ -41,15 +42,19 @@ def index(request):
     alku = _pvm(request.GET.get("alku"), date(tanaan.year, 1, 1))
     loppu = _pvm(request.GET.get("loppu"), tanaan)
     alv = request.liike.alv_prosentti
+    brutto = nayta_brutto(request)
 
+    # Katetta ei voi laskea ilman ostohintaa, joten ne jäävät raportin ulkopuolelle.
     rivit = list(
-        Kierto.objects.filter(myyntihinta__isnull=False, myyntipvm__gte=alku, myyntipvm__lte=loppu)
+        Kierto.objects.filter(
+            myyntihinta__isnull=False, ostohinta__isnull=False, myyntipvm__gte=alku, myyntipvm__lte=loppu
+        )
         .select_related("ajoneuvo", "toimittaja", "asiakas")
         .kulusummilla()
         .order_by("myyntipvm", "id")
     )
     for r in rivit:
-        r.kate_ = r.kate(alv)
+        r.luvut = r.kate(alv).luvut(brutto)
         r.kiertoaika = (r.myyntipvm - r.ostopvm).days if r.ostopvm else None
     kanavat = dict(logiikka.OSTOKANAVAT)
 
@@ -57,7 +62,7 @@ def index(request):
     ika = []
     for nimi, a, b in [("0–30 pv", 0, 30), ("31–60 pv", 31, 60), ("61–90 pv", 61, 90), ("yli 90 pv", 91, 10**6)]:
         ryhma = [r for r in varasto if a <= (logiikka.paivia_valissa(r.ostopvm, tanaan) or 0) <= b]
-        ika.append({"nimi": nimi, "n": len(ryhma), "sidottu": sum((r.ostohinta or 0) + r.kulut_yht for r in ryhma)})
+        ika.append({"nimi": nimi, "n": len(ryhma), "sidottu": sum(r.sidottu(alv, brutto) for r in ryhma)})
 
     saatavat = list(
         Kierto.objects.filter(myyntihinta__isnull=False, maksettu_pvm__isnull=True)

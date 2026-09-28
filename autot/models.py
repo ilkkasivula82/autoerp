@@ -10,6 +10,7 @@ Kaikki taulut perivät LiikkeenMalli-luokan: jokainen rivi kuuluu yhdelle liikke
 Rahasummat ovat senttejä (BigIntegerField).
 """
 
+from dataclasses import dataclass
 from decimal import Decimal
 
 from django.conf import settings
@@ -184,23 +185,34 @@ class AjoneuvonVaruste(LiikkeenMalli):
         constraints = [models.UniqueConstraint(fields=["ajoneuvo", "varuste"], name="ajoneuvon_varuste_uniikki")]
 
 
-def _kulusumma(ehto=None):
+def _kulusumma(kentta, ehto=None):
     kulut = Kulu.kaikki.filter(kierto=OuterRef("pk"))
     if ehto is not None:
         kulut = kulut.filter(ehto)
     return Coalesce(
-        Subquery(kulut.values("kierto").annotate(s=Sum("summa_veroton")).values("s")[:1]),
+        Subquery(kulut.values("kierto").annotate(s=Sum(kentta)).values("s")[:1]),
         Value(0),
         output_field=models.BigIntegerField(),
     )
 
 
+@dataclass(frozen=True)
+class Kulusummat:
+    veroton: int
+    jalki_veroton: int
+    verollinen: int
+    jalki_verollinen: int
+
+
 class KiertoQuerySet(LiikeQuerySet):
     def kulusummilla(self):
-        """Lisää kulut_yht ja jalkikulut_yht (senttiä) ilman N+1-kyselyjä."""
+        """Lisää kulusummat (senttiä, verottomina ja verollisina) ilman N+1-kyselyjä."""
+        jalki = Q(pvm__gt=OuterRef("myyntipvm"))
         return self.annotate(
-            kulut_yht=_kulusumma(),
-            jalkikulut_yht=_kulusumma(Q(pvm__gt=OuterRef("myyntipvm"))),
+            kulut_yht=_kulusumma("summa_veroton"),
+            jalkikulut_yht=_kulusumma("summa_veroton", jalki),
+            kulut_verolliset_yht=_kulusumma("summa_verollinen"),
+            jalkikulut_verolliset_yht=_kulusumma("summa_verollinen", jalki),
         )
 
     def varastossa(self):
@@ -278,31 +290,49 @@ class Kierto(LiikkeenMalli):
         return logiikka.TILA_LUOKKA[self.tila]
 
     def kulusummat(self):
-        """(kaikki kulut, jälkikulut) senttiä. Käyttää annotaatioita, jos ne on haettu."""
+        """Kierron kulut senttiä. Käyttää annotaatioita, jos ne on haettu (kulusummilla)."""
         if hasattr(self, "kulut_yht"):
-            return self.kulut_yht, self.jalkikulut_yht
-        kulut = list(self.kulut.values_list("summa_veroton", "pvm"))
-        yht = sum(s for s, _ in kulut)
-        jalki = sum(s for s, p in kulut if logiikka.on_jalkikulu(p, self.myyntipvm))
-        return yht, jalki
+            return Kulusummat(
+                self.kulut_yht, self.jalkikulut_yht, self.kulut_verolliset_yht, self.jalkikulut_verolliset_yht
+            )
+        kulut = list(self.kulut.values_list("summa_veroton", "summa_verollinen", "pvm"))
+        jalki = [k for k in kulut if logiikka.on_jalkikulu(k[2], self.myyntipvm)]
+        return Kulusummat(
+            veroton=sum(k[0] for k in kulut),
+            jalki_veroton=sum(k[0] for k in jalki),
+            verollinen=sum(k[1] for k in kulut),
+            jalki_verollinen=sum(k[1] for k in jalki),
+        )
 
     def kate(self, alv_prosentti=None):
         """Toteutunut kate, tai arvio pyyntihinnalla, jos autoa ei ole myyty."""
         myynti, arvio = self.myyntihinta, False
         if myynti is None:
             myynti, arvio = self.pyyntihinta, True
-        kulut, jalki = self.kulusummat()
+        kulut = self.kulusummat()
         if alv_prosentti is None:
             alv_prosentti = self.liike.alv_prosentti
         return logiikka.laske_kate(
             ostohinta=self.ostohinta,
             myyntihinta=myynti,
             alv_kasittely=self.alv_kasittely,
-            kulut_veroton=kulut,
+            kulut_veroton=kulut.veroton,
             alv_prosentti=alv_prosentti,
-            jalkikulut=jalki,
+            jalkikulut=kulut.jalki_veroton,
+            kulut_verollinen=kulut.verollinen,
+            jalkikulut_verollinen=kulut.jalki_verollinen,
             arvio=arvio,
         )
+
+    def sidottu(self, alv_prosentti, brutto=False):
+        """Autoon sidottu raha: ostohinta + kulut (brutto: ALV-kaupan osto ja kulut verollisina)."""
+        kulut = self.kulusummat()
+        osto = self.ostohinta or 0
+        if not brutto:
+            return osto + kulut.veroton
+        if self.alv_kasittely == "alv":
+            osto = logiikka.verolliseksi(osto, alv_prosentti)
+        return osto + kulut.verollinen
 
     def kierroksia(self):
         return Kierto.objects.filter(ajoneuvo_id=self.ajoneuvo_id).count()
@@ -330,6 +360,8 @@ class Kulu(LiikkeenMalli):
     tyyppi = models.CharField("tyyppi", max_length=30, choices=logiikka.KULUTYYPIT, default="muu")
     kuvaus = models.CharField("kuvaus", max_length=500, blank=True)
     summa_veroton = models.BigIntegerField("summa (alv 0)", help_text="senttiä")
+    # Tallennetaan erikseen, jotta käyttäjän syöttämä verollinen summa säilyy sentilleen.
+    summa_verollinen = models.BigIntegerField("summa (sis. alv)", help_text="senttiä")
     alv_prosentti = alv_kentta(default=Decimal("25.5"))
     pvm = models.DateField("päivämäärä", default=timezone.localdate)
     toimittaja = models.CharField("toimittaja / korjaamo", max_length=200, blank=True)
@@ -344,6 +376,11 @@ class Kulu(LiikkeenMalli):
     @property
     def on_jalkikulu(self):
         return logiikka.on_jalkikulu(self.pvm, self.kierto.myyntipvm)
+
+    def save(self, *args, **kwargs):
+        if self.summa_verollinen is None:
+            self.summa_verollinen = logiikka.verolliseksi(self.summa_veroton, self.alv_prosentti)
+        super().save(*args, **kwargs)
 
 
 class Kuntoraportti(LiikkeenMalli):

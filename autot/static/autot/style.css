@@ -166,3 +166,10 @@ details.siirto > form { padding: 0 12px; }
 .asteikko label { margin: 0; }
 .htmx-request.latautuu, .htmx-request .latautuu { opacity: .6; }
 #valilehti.htmx-request { opacity: .6; transition: opacity .15s; }
+
+/* Netto/brutto-valitsin yläpalkissa */
+.hintanakyma { display: inline-flex; margin-right: 12px; }
+.hintanakyma button { background: #1f2937; color: #94a3b8; border: 1px solid #374151; padding: 4px 10px; font-size: 13px; border-radius: 0; }
+.hintanakyma button:first-of-type { border-radius: 6px 0 0 6px; }
+.hintanakyma button:last-of-type { border-radius: 0 6px 6px 0; }
+.hintanakyma button.valittu { background: #e5e7eb; color: #111827; font-weight: 600; }

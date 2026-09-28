@@ -261,10 +261,13 @@ class KuluLomake(Suomeksi, forms.ModelForm):
 
     def save(self, commit=True):
         kulu = super().save(commit=False)
-        summa = self.cleaned_data["summa"]
+        summa, alv = self.cleaned_data["summa"], self.cleaned_data["alv_prosentti"]
         if self.cleaned_data["summa_on"] == "verollinen":
-            summa = logiikka.verottomaksi(summa, self.cleaned_data["alv_prosentti"])
-        kulu.summa_veroton = summa
+            kulu.summa_veroton = logiikka.verottomaksi(summa, alv)
+            kulu.summa_verollinen = summa  # syötetty summa sellaisenaan
+        else:
+            kulu.summa_veroton = summa
+            kulu.summa_verollinen = logiikka.verolliseksi(summa, alv)
         if commit:
             kulu.save()
         return kulu

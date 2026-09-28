@@ -380,6 +380,13 @@ class KirjoitusTestit(Pohja):
         self.assertEqual(Varuste.kaikki.filter(nimi="Vieras").count(), 0)
         self.assert_b_ennallaan()
 
+    def test_hintanakyma_muuttaa_vain_omaa_asetusta(self):
+        # Reitillä ei ole id:tä; varmistetaan, ettei toisen liikkeen käyttäjän asetus muutu.
+        self.client.post(reverse("autot:hintanakyma"), {"brutto": "1"})
+        self.assertTrue(Kayttaja.objects.get(pk=self.a.admin.pk).nayta_brutto)
+        self.assertFalse(Kayttaja.objects.get(pk=self.b.admin.pk).nayta_brutto)
+        self.assertFalse(Kayttaja.objects.get(pk=self.b.myyja.pk).nayta_brutto)
+
     def test_asetukset_muuttavat_vain_omaa_liiketta(self):
         self.client.post(reverse("autot:asetukset"), {"toiminto": "liike", "nimi": "Uusi nimi", "alv_prosentti": "24"})
         self.b.liike.refresh_from_db()
