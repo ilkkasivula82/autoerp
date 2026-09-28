@@ -10,10 +10,16 @@
       </div>
       {% endif %}
 
+      {% if voi_ostaa or voi_myyda %}
+      <div class="siirrot" style="margin-bottom:10px">
+        {% if voi_ostaa %}<a class="nappi ensisijainen" href="{% url 'autot:ostosopimus' k.id %}">Tee ostosopimus</a>{% endif %}
+        {% if voi_myyda %}<a class="nappi ensisijainen" href="{% url 'autot:myyntisopimus' k.id %}">Tee myyntisopimus</a>{% endif %}
+      </div>
+      {% endif %}
       <div class="siirrot">
       {% for s in siirrot %}
         <details class="siirto">
-          <summary>{% if s.taakse %}← Palauta: {{ s.nimi }}{% elif s.tila == 'hylatty' %}✕ Ei osteta{% else %}→ {{ s.nimi }}{% endif %}</summary>
+          <summary>{% if s.taakse %}← Palauta: {{ s.nimi }}{% elif s.tila == 'hylatty' %}✕ Ei osteta{% elif s.tila == 'ostettu' or s.tila == 'myyty' %}→ {{ s.nimi }} ilman sopimusta{% else %}→ {{ s.nimi }}{% endif %}</summary>
           <form method="post" action="{% url 'autot:vaihda_tila' k.id %}">
             {% csrf_token %}
             <input type="hidden" name="tila" value="{{ s.tila }}">
@@ -116,6 +122,7 @@
           · {% if k.maksettu_pvm %}<span class="merkki">maksettu {{ k.maksettu_pvm|pvm }}</span>{% else %}<span class="merkki varoitus">maksamatta</span>{% endif %}</td></tr>{% endif %}
         {% if k.sijainti %}<tr><td class="himmea">Sijainti</td><td>{{ k.sijainti }}</td></tr>{% endif %}
         {% if k.huomiot %}<tr><td class="himmea">Huomiot</td><td>{{ k.huomiot|linebreaksbr }}</td></tr>{% endif %}
+        {% for sop in sopimukset %}<tr><td class="himmea">{{ sop.get_tyyppi_display }}</td><td><a href="{% url 'autot:sopimus' sop.id %}">nro {{ sop.numero }}</a> · {{ sop.pvm|pvm }} · {{ sop.vp_nimi }}</td></tr>{% endfor %}
       </table>
     </div>
   </div>

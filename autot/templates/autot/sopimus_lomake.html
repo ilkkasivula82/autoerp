@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block otsikko %}{{ otsikko }}{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi"><div>
+  <h1>{{ otsikko }}: {{ a.merkki }} {{ a.malli }} {{ a.rekisterinumero }}</h1>
+  <div class="himmea">{% if tyyppi == 'osto' %}Liike ostaa auton. Tallennus vie auton varastoon sopimuksen hinnalla.{% else %}Liike myy auton. Vaihtoajoneuvot tulevat varastoon vaihtohinnalla.{% endif %}</div>
+</div><a class="nappi" href="{% url 'autot:kortti' k.id %}">Peruuta</a></div>
+
+<form method="post" novalidate>
+{% csrf_token %}
+{% if lomake.non_field_errors %}<div class="ilmoitus virhe">{{ lomake.non_field_errors|join:" " }}</div>{% endif %}
+
+<div class="kortti">
+  <h2>{% if tyyppi == 'osto' %}Myyjä{% else %}Ostaja{% endif %}</h2>
+  <div class="kentat">
+    <div class="leveä">
+      <label for="{{ lomake.valittu.id_for_label }}">{{ lomake.valittu.label }}</label>
+      <select name="{{ lomake.valittu.html_name }}" id="{{ lomake.valittu.id_for_label }}"
+              hx-get="{% url 'autot:vastapuoli' %}" hx-target="#vastapuolen-tiedot" hx-swap="outerHTML" hx-trigger="change">
+        {% for arvo, nimi in lomake.valittu.field.choices %}<option value="{{ arvo }}" {% if lomake.valittu.value|stringformat:"s" == arvo|stringformat:"s" %}selected{% endif %}>{{ nimi }}</option>{% endfor %}
+      </select>
+      <p class="pieni himmea" style="margin:4px 0 0">Valitse rekisteristä tai jätä tyhjäksi ja kirjoita tiedot: uusi asiakas lisätään rekisteriin.</p>
+    </div>
+  </div>
+  {% include "autot/_vastapuoli.html" %}
+  <details style="margin-top:12px"{% if lomake.vp2_nimi.value %} open{% endif %}>
+    <summary class="pieni" style="cursor:pointer">{% if tyyppi == 'osto' %}Myyjä 2{% else %}Ostaja 2 / muu haltija{% endif %} (valinnainen)</summary>
+    <div class="kentat" style="margin-top:8px">
+      {% include "_kentta.html" with kentta=lomake.vp2_nimi %}
+      {% include "_kentta.html" with kentta=lomake.vp2_tunnus %}
+      {% include "_kentta.html" with kentta=lomake.vp2_puhelin %}
+      {% include "_kentta.html" with kentta=lomake.vp2_sahkoposti %}
+      {% include "_kentta.html" with kentta=lomake.vp2_osoite leve=True %}
+    </div>
+  </details>
+  <div class="kentat" style="margin-top:12px">
+    {% include "_kentta.html" with kentta=lomake.tunnistus %}
+    <div><label style="display:flex;gap:8px;align-items:center;color:inherit;margin-top:24px">{{ lomake.pep }} {{ lomake.pep.label }}</label></div>
+  </div>
+</div>
+
+<div class="kortti">
+  <h2>Kaupan kohde</h2>
+  <p class="himmea" style="margin-top:-6px">{{ a.merkki }} {{ a.malli }} {{ a.mallitarkenne }} · {{ a.rekisterinumero|default:"ei rekisteriä" }}{% if a.vin %} · {{ a.vin }}{% endif %}</p>
+  <div class="kentat">
+    {% include "_kentta.html" with kentta=kohde.hinta %}
+    {% include "_kentta.html" with kentta=kohde.km %}
+    {% include "_kentta.html" with kentta=kohde.katsastettu %}
+    {% if tyyppi == 'osto' %}
+      {% include "_kentta.html" with kentta=kohde.jaannosvelka %}
+      {% include "_kentta.html" with kentta=kohde.jaannosvelan_haltija %}
+      <div class="leveä">{% include "_kentta.html" with kentta=kohde.alv_kasittely %}<p class="pieni himmea" style="margin:4px 0 0">{{ kohde.alv_kasittely.help_text }}</p></div>
+    {% else %}
+      <div><label>Verotus</label><div style="padding:8px 0">{{ k.get_alv_kasittely_display }}</div></div>
+    {% endif %}
+  </div>
+  {% if tyyppi == 'osto' %}
+  <h3>Myyjän ilmoittamat tiedot</h3>
+  <div class="kentat">
+    {% include "_kentta.html" with kentta=kohde.kolaroitu %}
+    {% include "_kentta.html" with kentta=kohde.maahantuotu %}
+    {% include "_kentta.html" with kentta=kohde.mittari_vastaa %}
+    {% include "_kentta.html" with kentta=kohde.rakennemuutoksia %}
+  </div>
+  {% endif %}
+</div>
+
+{% if vaihdot %}
+<div class="kortti">
+  <h2>Vaihtoajoneuvot</h2>
+  <p class="himmea" style="margin-top:-6px">Vaihtohinta hyvitetään käteishinnasta, ja auto tulee varastoon ostohinnalla = vaihtohinta. Liike maksaa vaihtoajoneuvon jäännösvelan, joten se lisätään asiakkaan maksettavaan. Tyhjät rivit ohitetaan.</p>
+  {{ vaihdot.management_form }}
+  {% if vaihdot.non_form_errors %}<div class="ilmoitus virhe">{{ vaihdot.non_form_errors|join:" " }}</div>{% endif %}
+  {% for v in vaihdot %}
+    <h3>Vaihtoajoneuvo {{ forloop.counter }}</h3>
+    <div class="kentat">
+      {% include "_kentta.html" with kentta=v.rekisterinumero %}
+      {% include "_kentta.html" with kentta=v.vin %}
+      {% include "_kentta.html" with kentta=v.merkki %}
+      {% include "_kentta.html" with kentta=v.malli %}
+      {% include "_kentta.html" with kentta=v.mallitarkenne %}
+      {% include "_kentta.html" with kentta=v.vuosimalli %}
+      {% include "_kentta.html" with kentta=v.ensirekisterointi %}
+      {% include "_kentta.html" with kentta=v.km %}
+      {% include "_kentta.html" with kentta=v.katsastettu %}
+      {% include "_kentta.html" with kentta=v.hinta %}
+      {% include "_kentta.html" with kentta=v.jaannosvelka %}
+      {% include "_kentta.html" with kentta=v.jaannosvelan_haltija %}
+      {% include "_kentta.html" with kentta=v.alv_kasittely %}
+      {% include "_kentta.html" with kentta=v.kolaroitu %}
+      {% include "_kentta.html" with kentta=v.maahantuotu %}
+      {% include "_kentta.html" with kentta=v.mittari_vastaa %}
+      {% include "_kentta.html" with kentta=v.rakennemuutoksia %}
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="kortti">
+  <h2>Toimitus ja maksu</h2>
+  <div class="kentat">
+    {% include "_kentta.html" with kentta=lomake.pvm %}
+    {% include "_kentta.html" with kentta=lomake.toimitusaika %}
+    {% include "_kentta.html" with kentta=lomake.maksutapa %}
+    {% if tyyppi == 'myynti' %}
+      {% include "_kentta.html" with kentta=lomake.erapaiva %}
+      {% include "_kentta.html" with kentta=lomake.toimistokulut %}
+      {% include "_kentta.html" with kentta=lomake.etumaksu %}
+      {% include "_kentta.html" with kentta=lomake.rahoitettava %}
+      {% include "_kentta.html" with kentta=lomake.rahoitusyhtio %}
+    {% endif %}
+    {% include "_kentta.html" with kentta=lomake.lisatiedot leve=True %}
+  </div>
+  <div class="lomake-alas"><button class="ensisijainen">Tallenna {{ otsikko|lower }}</button><a class="nappi" href="{% url 'autot:kortti' k.id %}">Peruuta</a></div>
+</div>
+</form>
+{% endblock %}

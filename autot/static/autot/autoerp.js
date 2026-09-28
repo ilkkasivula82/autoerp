@@ -39,14 +39,14 @@ function suodataVarusteet() {
 document.addEventListener('input', (e) => { if (e.target.id === 'varustehaku') suodataVarusteet(); });
 document.addEventListener('change', (e) => {
   if (e.target.id === 'vain-valitut' || e.target.closest('.varustelista')) suodataVarusteet();
-  if (e.target.id === 'id_heti_ostettu') naytaOstohinta();
+  if (e.target.name === 'kirjaus') naytaOstohinta();
 });
 
-// Uusi auto: ostohinta näkyy vain, kun "Ostettu heti" on valittu
+// Uusi auto: ostohinta näkyy vain, kun auto lisätään suoraan varastoon
 function naytaOstohinta() {
-  const heti = document.getElementById('id_heti_ostettu');
+  const valittu = document.querySelector('input[name=kirjaus]:checked');
   const kentta = document.getElementById('ostohinta-kentta');
-  if (heti && kentta) kentta.style.display = heti.checked ? '' : 'none';
+  if (valittu && kentta) kentta.style.display = valittu.value === 'varasto' ? '' : 'none';
 }
 document.addEventListener('DOMContentLoaded', naytaOstohinta);
 

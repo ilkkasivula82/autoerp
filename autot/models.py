@@ -59,11 +59,16 @@ class Yritys(LiikkeenMalli):
     """Toimittajat ja asiakkaat samassa taulussa: sama liike voi olla kumpaakin."""
 
     nimi = models.CharField("nimi", max_length=200)
-    y_tunnus = models.CharField("Y-tunnus", max_length=20, blank=True)
+    y_tunnus = models.CharField("Y-tunnus / henkilötunnus", max_length=20, blank=True)
     tyyppi = models.CharField("tyyppi", max_length=20, choices=logiikka.OSTOKANAVAT, default="autoliike")
     yhteyshenkilo = models.CharField("yhteyshenkilö", max_length=200, blank=True)
     puhelin = models.CharField("puhelin", max_length=50, blank=True)
     sahkoposti = models.EmailField("sähköposti", blank=True)
+    lahiosoite = models.CharField("lähiosoite", max_length=200, blank=True)
+    postinumero = models.CharField("postinumero", max_length=10, blank=True)
+    postitoimipaikka = models.CharField("postitoimipaikka", max_length=100, blank=True)
+    tilinumero = models.CharField("tilinumero (IBAN)", max_length=40, blank=True)
+    alv_velvollinen = models.BooleanField("alv-velvollinen", default=False)
     huomiot = models.TextField("huomiot", blank=True)
     luotu = models.DateTimeField(auto_now_add=True)
 
@@ -237,7 +242,7 @@ class Kierto(LiikkeenMalli):
     toimittaja = models.ForeignKey(
         Yritys, verbose_name="toimittaja", on_delete=models.PROTECT, null=True, blank=True, related_name="ostot"
     )
-    ostokanava = models.CharField("ostokanava", max_length=20, choices=logiikka.OSTOKANAVAT, blank=True)
+    ostokanava = models.CharField("ostokanava", max_length=20, choices=logiikka.KIERRON_OSTOKANAVAT, blank=True)
     tarjottu_hinta = raha("pyydetty hinta")
     tarjottu_pvm = models.DateField("tarjottu", null=True, blank=True)
     hylkayksen_syy = models.CharField("hylkäyksen syy", max_length=500, blank=True)
@@ -275,6 +280,18 @@ class Kierto(LiikkeenMalli):
                 fields=["ajoneuvo"],
                 condition=~Q(tila__in=logiikka.PAATTYNEET),
                 name="yksi_avoin_kierto_per_ajoneuvo",
+            ),
+            # Varastossa tai myytynä olevalla autolla on aina ostohinta.
+            models.CheckConstraint(
+                condition=~Q(tila__in=logiikka.OSTETUT) | Q(ostohinta__isnull=False),
+                name="ostetulla_autolla_ostohinta",
+                violation_error_message="Varastossa olevalla autolla pitää olla ostohinta.",
+            ),
+            # Myydyllä autolla on aina myyntihinta.
+            models.CheckConstraint(
+                condition=~Q(tila__in=logiikka.MYYDYT) | Q(myyntihinta__isnull=False),
+                name="myydylla_autolla_myyntihinta",
+                violation_error_message="Myydyllä autolla pitää olla myyntihinta.",
             ),
         ]
 
@@ -529,3 +546,123 @@ class Muutosloki(LiikkeenMalli):
         verbose_name_plural = "muutosloki"
         ordering = ["-aika", "-id"]
         indexes = [models.Index(fields=["kohde", "kohde_id"], name="muutosloki_kohde_idx")]
+
+
+# ---------- Sopimukset ----------
+
+
+class Sopimus(LiikkeenMalli):
+    """Osto- tai myyntisopimus. Vastapuolen tiedot tallennetaan sopimushetken mukaisina.
+
+    Ostosopimus vie auton varastoon (ostohinta = sopimushinta). Myyntisopimus merkitsee
+    auton myydyksi; sen vaihtoajoneuvot tulevat varastoon ostohinnalla = vaihtohinta.
+    """
+
+    TYYPIT = [("osto", "Ostosopimus"), ("myynti", "Myyntisopimus")]
+    TUNNISTUSTAVAT = [
+        ("ajokortti", "Ajokortti"),
+        ("passi", "Passi"),
+        ("henkilokortti", "Henkilökortti"),
+        ("muu", "Muu"),
+        ("ei", "Ei tarkastettu (yritys)"),
+    ]
+    MAKSUTAVAT = [
+        ("tilisiirto", "Tilisiirto"),
+        ("lasku", "Lasku"),
+        ("kateinen", "Käteinen"),
+        ("rahoitus", "Osamaksu / rahoitus"),
+        ("muu", "Muu"),
+    ]
+
+    tyyppi = models.CharField(max_length=10, choices=TYYPIT)
+    numero = models.PositiveIntegerField("sopimusnumero")
+    pvm = models.DateField("päiväys", default=timezone.localdate)
+    vastapuoli = models.ForeignKey(Yritys, on_delete=models.PROTECT, related_name="sopimukset")
+    # Vastapuolen tiedot sopimushetkellä
+    vp_nimi = models.CharField("nimi", max_length=200)
+    vp_tunnus = models.CharField("Y-tunnus / henkilötunnus", max_length=20, blank=True)
+    vp_lahiosoite = models.CharField("lähiosoite", max_length=200, blank=True)
+    vp_postinumero = models.CharField("postinumero", max_length=10, blank=True)
+    vp_postitoimipaikka = models.CharField("postitoimipaikka", max_length=100, blank=True)
+    vp_puhelin = models.CharField("puhelin", max_length=50, blank=True)
+    vp_sahkoposti = models.EmailField("sähköposti", blank=True)
+    vp_tilinumero = models.CharField("tilinumero (IBAN)", max_length=40, blank=True)
+    vp_alv_velvollinen = models.BooleanField("alv-velvollinen", default=False)
+    # Toinen osapuoli (esim. Ostaja 2 / Myyjä 2 / muu haltija), valinnainen
+    vp2_nimi = models.CharField("toisen osapuolen nimi", max_length=200, blank=True)
+    vp2_tunnus = models.CharField("toisen osapuolen Y-tunnus / henkilötunnus", max_length=20, blank=True)
+    vp2_osoite = models.CharField("toisen osapuolen osoite", max_length=300, blank=True)
+    vp2_puhelin = models.CharField("toisen osapuolen puhelin", max_length=50, blank=True)
+    vp2_sahkoposti = models.EmailField("toisen osapuolen sähköposti", blank=True)
+    # Asiakkaan tunnistaminen (rahanpesulaki)
+    tunnistus = models.CharField("henkilötiedot tarkastettu", max_length=20, choices=TUNNISTUSTAVAT, default="ei")
+    pep = models.BooleanField("poliittisesti vaikutusvaltainen henkilö (PEP)", default=False)
+    # Toimitus ja maksu
+    toimitusaika = models.DateField("toimitusaika", null=True, blank=True)
+    maksutapa = models.CharField("maksutapa", max_length=20, choices=MAKSUTAVAT, default="tilisiirto")
+    # Myyntisopimuksen hinnan lisäerät ja maksun jakautuminen (senttiä)
+    toimistokulut = models.BigIntegerField("toimistokulut", default=0, help_text="senttiä")
+    etumaksu = models.BigIntegerField("etumaksu", default=0, help_text="senttiä")
+    rahoitettava = models.BigIntegerField("rahoitettava osuus", default=0, help_text="senttiä")
+    rahoitusyhtio = models.CharField("rahoitusyhtiö", max_length=200, blank=True)
+    erapaiva = models.DateField("laskun eräpäivä", null=True, blank=True)
+    lisatiedot = models.TextField("lisätiedot ja muut ehdot", blank=True)
+    laatija = models.ForeignKey(KAYTTAJA, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    luotu = models.DateTimeField(auto_now_add=True)
+
+    class Meta(LiikkeenMalli.Meta):
+        verbose_name = "sopimus"
+        verbose_name_plural = "sopimukset"
+        ordering = ["-pvm", "-numero"]
+        constraints = [models.UniqueConstraint(fields=["liike", "numero"], name="sopimusnumero_uniikki")]
+
+    def __str__(self):
+        return f"{self.get_tyyppi_display()} {self.numero}"
+
+    def kohderivit(self):
+        return [r for r in self.rivit.all() if r.rooli == "kohde"]
+
+    def vaihtorivit(self):
+        return [r for r in self.rivit.all() if r.rooli == "vaihto"]
+
+    def summat(self):
+        return logiikka.sopimuksen_summat(
+            self.tyyppi,
+            [(r.hinta, r.jaannosvelka) for r in self.kohderivit()],
+            [(r.hinta, r.jaannosvelka) for r in self.vaihtorivit()],
+            toimistokulut=self.toimistokulut,
+            etumaksu=self.etumaksu,
+            rahoitettava=self.rahoitettava,
+        )
+
+
+class SopimusRivi(LiikkeenMalli):
+    """Sopimuksen ajoneuvo: kaupan kohde tai (myyntisopimuksessa) vaihtoajoneuvo."""
+
+    ROOLIT = [("kohde", "Kaupan kohde"), ("vaihto", "Vaihtoajoneuvo")]
+    ILMOITUS = [("ei", "Ei"), ("kylla", "Kyllä"), ("ei_tietoa", "Ei tietoa")]
+
+    sopimus = models.ForeignKey(Sopimus, on_delete=models.CASCADE, related_name="rivit")
+    kierto = models.ForeignKey(Kierto, on_delete=models.PROTECT, related_name="sopimusrivit")
+    rooli = models.CharField(max_length=10, choices=ROOLIT, default="kohde")
+    hinta = models.BigIntegerField("käteishinta", help_text="senttiä, sis. mahdollisen alv:n")
+    jaannosvelka = models.BigIntegerField("jäännösvelka", default=0, help_text="senttiä")
+    jaannosvelan_haltija = models.CharField("jäännösvelan haltija", max_length=200, blank=True)
+    alv_kasittely = models.CharField("verotus", max_length=20, choices=logiikka.ALV_KASITTELYT, default="marginaali")
+    # Ajoneuvon tiedot sopimushetkellä
+    rekisterinumero = models.CharField(max_length=20, blank=True)
+    vin = models.CharField(max_length=17, blank=True)
+    merkki_malli = models.CharField(max_length=300)
+    km = models.PositiveIntegerField("mittarilukema", null=True, blank=True)
+    ensirekisterointi = models.DateField("ensirekisteröinti", null=True, blank=True)
+    katsastettu = models.DateField("edellinen katsastus", null=True, blank=True)
+    # Myyjän ilmoittamat tiedot (ostettavat ja vaihtoajoneuvot)
+    kolaroitu = models.CharField("kolaroitu", max_length=10, choices=ILMOITUS, blank=True)
+    maahantuotu = models.CharField("tuotu käytettynä maahan", max_length=10, choices=ILMOITUS, blank=True)
+    mittari_vastaa = models.CharField("mittarilukema vastaa ajomäärää", max_length=10, choices=ILMOITUS, blank=True)
+    rakennemuutoksia = models.CharField("rakenteellisia muutoksia", max_length=10, choices=ILMOITUS, blank=True)
+
+    class Meta(LiikkeenMalli.Meta):
+        verbose_name = "sopimusrivi"
+        verbose_name_plural = "sopimusrivit"
+        ordering = ["id"]

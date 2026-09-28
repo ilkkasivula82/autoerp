@@ -32,11 +32,15 @@ Tuotanto Renderissä (`render.yaml`), kuvat Cloudflare R2:ssa.
    Rahaluvut näytetään käyttäjän valinnan mukaan nettona tai bruttona: näkymät käyttävät `autot/esitys.py`:tä
    (`hinnat`, `nayta_brutto`) ja `Kate.luvut(brutto)`:a, eivät laske alv:tä itse. Otsikoissa kerrotaan
    esitystapa (`ALV_MERKINTA`).
-7. **Kuvat vain `autot/kuvat.py`:n kautta** (Djangon `default_storage`: R2 tuotannossa, levy kehityksessä).
+7. **Varastoon vain ostohinnalla.** Auto tulee varastoon ostosopimuksella, myyntisopimuksen vaihtoautona tai
+   suoraan ostohinnan kanssa (`autot/sopimukset.py`). Tietokannan rajoitteet (`ostetulla_autolla_ostohinta`,
+   `myydylla_autolla_myyntihinta`) varmistavat tämän; älä kierrä niitä. Sopimuksen hinnat ovat käteishintoja
+   (sis. alv), kierrolle muunnetaan `logiikka.kierron_hinta`:lla.
+8. **Kuvat vain `autot/kuvat.py`:n kautta** (Djangon `default_storage`: R2 tuotannossa, levy kehityksessä).
    Kuvia ei palvella suoraan ämpäristä, vaan näkymä tarkistaa liikkeen ja ohjaa allekirjoitettuun osoitteeseen.
-8. **HTMX:** välilehdet ja pienet päivitykset palauttavat osapohjan (`_`-alkuiset pohjat). Jokaisen lomakkeen
+9. **HTMX:** välilehdet ja pienet päivitykset palauttavat osapohjan (`_`-alkuiset pohjat). Jokaisen lomakkeen
    pitää toimia myös ilman JavaScriptiä (tavallinen POST + uudelleenohjaus).
-9. **Tyyli:** `ruff check .` ja `ruff format .` (asetukset `pyproject.toml`:ssa, rivin pituus 120).
+10. **Tyyli:** `ruff check .` ja `ruff format .` (asetukset `pyproject.toml`:ssa, rivin pituus 120).
 
 ## Komennot
 
@@ -62,11 +66,12 @@ autot/
   logiikka.py      tilat, siirrot, raha, katelaskenta (puhdas Python)
   models.py        tietomalli: Ajoneuvo, Kierto, Kulu, Tilahistoria, Tehtava, Kuntoraportti, ...
   palvelut.py      tilasiirrot, uusi kierros, tehtävien luonti, muutosloki
+  sopimukset.py    osto- ja myyntisopimukset (auto varastoon, vaihtoautot)
   forms.py         lomakkeet
   kuvat.py         kuvien pienennys ja tallennus
   perusdata.py     uuden liikkeen koodistot, varusteet, tehtäväpohjat
-  views/           autot, kortti (välilehdet), tehtavat, hallinta, raportit
+  views/           autot, kortti (välilehdet), sopimukset, tehtavat, hallinta, raportit
   templates/autot/ pohjat; valilehdet/ = kortin välilehdet
   management/commands/  demodata, luo_liike
-  tests/           test_logiikka, test_monivuokraajuus, test_nakymat
+  tests/           test_logiikka, test_monivuokraajuus, test_nakymat, test_sopimukset
 ```

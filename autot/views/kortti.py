@@ -15,6 +15,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from .. import kuvat as kuvatallennus
 from .. import logiikka, palvelut
+from .. import sopimukset as sopimuspalvelu
 from ..esitys import nayta_brutto
 from ..forms import (
     AJONEUVO_KENTAT,
@@ -37,6 +38,7 @@ from ..models import (
     Kuva,
     Muutosloki,
     Rengassarja,
+    Sopimus,
     Tehtava,
     Varuste,
     Varustekategoria,
@@ -125,6 +127,9 @@ def _yhteenveto(request, k):
         "avoimet_tehtavat": avoimet[:6],
         "avoimia_yhteensa": len(avoimet),
         "yritykset": list(Yritys.objects.all()),
+        "sopimukset": Sopimus.objects.filter(rivit__kierto=k).distinct(),
+        "voi_ostaa": sopimuspalvelu.voi_tehda_ostosopimuksen(k),
+        "voi_myyda": sopimuspalvelu.voi_tehda_myyntisopimuksen(k),
     }
 
 

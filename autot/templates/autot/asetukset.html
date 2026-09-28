@@ -5,11 +5,10 @@
 {% include "autot/_hallinta_nav.html" %}
 <div class="ruudukko r2">
 <div class="kortti"><h2>Liike</h2>
+  <p class="pieni himmea">Yhteystiedot ja ehdot tulostuvat osto- ja myyntisopimuksiin.</p>
   <form method="post">{% csrf_token %}<input type="hidden" name="toiminto" value="liike">
     <div style="display:grid;gap:10px">
-      {% include "_kentta.html" with kentta=liikelomake.nimi %}
-      {% include "_kentta.html" with kentta=liikelomake.y_tunnus %}
-      {% include "_kentta.html" with kentta=liikelomake.alv_prosentti %}
+      {% for kentta in liikelomake %}{% include "_kentta.html" %}{% if kentta.help_text %}<p class="pieni himmea" style="margin:-6px 0 0">{{ kentta.help_text }}</p>{% endif %}{% endfor %}
     </div>
     <div class="lomake-alas"><button class="ensisijainen">Tallenna</button></div></form>
 </div>

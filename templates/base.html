@@ -16,6 +16,7 @@
   <span class="logo">AutoERP</span>
   <a href="{% url 'autot:etusivu' %}" class="{% if nimi == 'etusivu' %}aktiivinen{% endif %}">Etusivu</a>
   <a href="{% url 'autot:lista' %}" class="{% if nimi in 'lista uusi kortti' %}aktiivinen{% endif %}">Autot</a>
+  <a href="{% url 'autot:sopimukset' %}" class="{% if nimi == 'sopimukset' %}aktiivinen{% endif %}">Sopimukset</a>
   <a href="{% url 'autot:tehtavat' %}" class="{% if nimi == 'tehtavat' %}aktiivinen{% endif %}">Tehtävät</a>
   <a href="{% url 'autot:yritykset' %}" class="{% if nimi == 'yritykset' or nimi == 'yritys' %}aktiivinen{% endif %}">Yritykset</a>
   <a href="{% url 'autot:raportit' %}" class="{% if nimi == 'raportit' %}aktiivinen{% endif %}">Raportit</a>

@@ -1,0 +1,12 @@
+{# Sopimuksen vastapuolen kentät. HTMX vaihtaa tämän, kun rekisteristä valitaan yritys. #}
+<div class="kentat" id="vastapuolen-tiedot">
+  {% include "_kentta.html" with kentta=lomake.vp_nimi %}
+  {% include "_kentta.html" with kentta=lomake.vp_tunnus %}
+  {% include "_kentta.html" with kentta=lomake.vp_puhelin %}
+  {% include "_kentta.html" with kentta=lomake.vp_sahkoposti %}
+  {% include "_kentta.html" with kentta=lomake.vp_lahiosoite %}
+  {% include "_kentta.html" with kentta=lomake.vp_postinumero %}
+  {% include "_kentta.html" with kentta=lomake.vp_postitoimipaikka %}
+  {% include "_kentta.html" with kentta=lomake.vp_tilinumero %}
+  <div><label style="display:flex;gap:8px;align-items:center;color:inherit;margin-top:24px">{{ lomake.vp_alv_velvollinen }} Alv-velvollinen</label></div>
+</div>

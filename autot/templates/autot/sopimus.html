@@ -1,0 +1,153 @@
+{% load static %}<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ s.get_tyyppi_display }} {{ s.numero }} · {{ liike.nimi }}</title>
+<style>
+  :root { --reuna: #9aa3ae; --teksti: #111827; --himmea: #4b5563; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.4 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: var(--teksti); background: #eef0f3; }
+  .paperi { max-width: 210mm; margin: 16px auto; background: #fff; padding: 14mm 12mm; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+  .tyokalut { max-width: 210mm; margin: 16px auto 0; display: flex; gap: 8px; flex-wrap: wrap; padding: 0 8px; }
+  .tyokalut a, .tyokalut button { font: inherit; font-size: 14px; padding: 8px 12px; border: 1px solid #cfd4dc; border-radius: 8px; background: #fff; color: #1f5eff; text-decoration: none; cursor: pointer; }
+  .tyokalut button { background: #1f5eff; color: #fff; border-color: #1f5eff; }
+  .ilmoitus { max-width: 210mm; margin: 12px auto 0; padding: 10px 14px; border-radius: 8px; background: #e8f5ec; color: #14532d; border: 1px solid #bfe3cb; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid var(--teksti); padding-bottom: 6px; margin-bottom: 10px; }
+  header .liike { font-size: 18px; font-weight: 700; }
+  header h1 { font-size: 20px; letter-spacing: .08em; margin: 0; text-align: center; }
+  header .tunnisteet { text-align: right; font-size: 12px; }
+  section { display: grid; grid-template-columns: 34mm 1fr; border: 1px solid var(--reuna); border-top: 0; }
+  section:first-of-type { border-top: 1px solid var(--reuna); }
+  section > h2 { margin: 0; font-size: 13px; padding: 6px; border-right: 1px solid var(--reuna); background: #f3f4f6; }
+  section > div { padding: 0; }
+  table.lomake { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.lomake td { border-bottom: 1px solid #d1d5db; border-right: 1px solid #d1d5db; padding: 3px 6px; vertical-align: top; word-wrap: break-word; }
+  table.lomake td:last-child { border-right: 0; }
+  table.lomake tr:last-child td { border-bottom: 0; }
+  .nimio { display: block; font-size: 10px; color: var(--himmea); }
+  .raha td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .raha .summa td { font-weight: 700; font-size: 14px; }
+  .vaihto-otsikko { font-size: 11px; font-weight: 700; padding: 4px 6px; background: #fafafa; border-bottom: 1px solid #d1d5db; }
+  .teksti { padding: 6px; white-space: pre-line; }
+  .vakuutus { padding: 6px; font-size: 12px; }
+  .allekirjoitukset td { height: 22mm; vertical-align: bottom; }
+  .viiva { border-top: 1px solid var(--teksti); padding-top: 2px; font-size: 11px; }
+  .ehdot { page-break-before: always; }
+  .ehdot h2 { font-size: 15px; }
+  .ehdot .teksti { font-size: 11px; column-count: 2; column-gap: 8mm; padding: 0; }
+  @media print {
+    body { background: #fff; }
+    .tyokalut, .ilmoitus { display: none; }
+    .paperi { box-shadow: none; margin: 0; padding: 0; max-width: none; }
+    @page { size: A4; margin: 12mm; }
+  }
+  @media (max-width: 700px) { section { grid-template-columns: 1fr; } section > h2 { border-right: 0; border-bottom: 1px solid var(--reuna); } }
+</style>
+</head>
+<body>
+<div class="tyokalut">
+  <a href="{% url 'autot:sopimukset' %}">← Sopimukset</a>
+  {% for r in kohteet %}<a href="{% url 'autot:kortti' r.kierto_id %}">{{ r.merkki_malli }} {{ r.rekisterinumero }}</a>{% endfor %}
+  {% for r in vaihdot %}<a href="{% url 'autot:kortti' r.kierto_id %}">Vaihtoauto: {{ r.rekisterinumero|default:r.merkki_malli }}</a>{% endfor %}
+  <button type="button" onclick="window.print()">Tulosta / tallenna PDF</button>
+</div>
+{% for viesti in messages %}<div class="ilmoitus">{{ viesti }}</div>{% endfor %}
+
+<div class="paperi">
+<header>
+  <div class="liike">{{ liike.nimi }}</div>
+  <h1>{% if s.tyyppi == 'osto' %}OSTOSOPIMUS{% else %}MYYNTISOPIMUS{% endif %}</h1>
+  <div class="tunnisteet">Päiväys {{ s.pvm|pvm }}<br>Sopimusnro <strong>{{ s.numero }}</strong></div>
+</header>
+
+<section>
+  <h2>{% if s.tyyppi == 'osto' %}Ostaja (liike){% else %}Myyjä (liike){% endif %}</h2>
+  <div><table class="lomake">
+    <tr><td colspan="2"><span class="nimio">Nimi</span>{{ liike.nimi }}</td><td><span class="nimio">Y-tunnus</span>{{ liike.y_tunnus|default:"–" }}</td></tr>
+    <tr><td colspan="2"><span class="nimio">Postiosoite</span>{{ liike.lahiosoite }} {{ liike.postinumero }} {{ liike.postitoimipaikka }}</td><td><span class="nimio">Yhteyshenkilö</span>{{ s.laatija.nimi|default:"" }}</td></tr>
+    <tr><td><span class="nimio">Puhelin</span>{{ liike.puhelin|default:"–" }}</td><td><span class="nimio">Sähköposti</span>{{ liike.sahkoposti|default:"–" }}</td><td><span class="nimio">Tilinumero</span>{{ liike.tilinumero|default:"–" }}</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>{% if s.tyyppi == 'osto' %}Myyjä{% else %}Ostaja{% endif %}</h2>
+  <div><table class="lomake">
+    <tr><td colspan="2"><span class="nimio">Nimi</span>{{ s.vp_nimi }}</td><td><span class="nimio">Y-tunnus / henkilötunnus</span>{{ s.vp_tunnus|default:"–" }}</td></tr>
+    <tr><td colspan="2"><span class="nimio">Postiosoite</span>{{ s.vp_lahiosoite }} {{ s.vp_postinumero }} {{ s.vp_postitoimipaikka }}</td><td><span class="nimio">Alv-velvollinen</span>{% if s.vp_alv_velvollinen %}Kyllä{% else %}Ei{% endif %}</td></tr>
+    <tr><td><span class="nimio">Puhelin</span>{{ s.vp_puhelin|default:"–" }}</td><td><span class="nimio">Sähköposti</span>{{ s.vp_sahkoposti|default:"–" }}</td><td><span class="nimio">Tilinumero</span>{{ s.vp_tilinumero|default:"–" }}</td></tr>
+    {% if s.vp2_nimi %}<tr><td colspan="2"><span class="nimio">{% if s.tyyppi == 'osto' %}Myyjä 2{% else %}Ostaja 2 / muu haltija{% endif %}</span>{{ s.vp2_nimi }}{% if s.vp2_osoite %}, {{ s.vp2_osoite }}{% endif %}{% if s.vp2_puhelin %}, {{ s.vp2_puhelin }}{% endif %}{% if s.vp2_sahkoposti %}, {{ s.vp2_sahkoposti }}{% endif %}</td><td><span class="nimio">Y-tunnus / henkilötunnus</span>{{ s.vp2_tunnus|default:"–" }}</td></tr>{% endif %}
+    <tr><td><span class="nimio">Henkilötiedot tarkastettu</span>{{ s.get_tunnistus_display }}</td><td><span class="nimio">Tunnistaja / pvm</span>{{ s.laatija.nimi|default:"" }} {{ s.pvm|pvm }}</td><td><span class="nimio">PEP</span>{% if s.pep %}On{% else %}Ei{% endif %}</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Kaupan kohde</h2>
+  <div>{% for r in kohteet %}{% include "autot/_sopimusrivi.html" with ilmoitetut=ilmoitetut_kohde %}{% endfor %}</div>
+</section>
+
+{% if vaihdot or s.tyyppi == 'myynti' %}
+<section>
+  <h2>Vaihto&shy;ajoneuvot</h2>
+  <div>{% for r in vaihdot %}<div class="vaihto-otsikko">Vaihtoajoneuvo {{ forloop.counter }}</div>{% include "autot/_sopimusrivi.html" with ilmoitetut=True %}{% empty %}<div class="teksti">Ei vaihtoajoneuvoa.</div>{% endfor %}</div>
+</section>
+{% endif %}
+
+<section>
+  <h2>Hinta ja maksuehdot</h2>
+  <div><table class="lomake raha">
+    {% if s.tyyppi == 'osto' %}
+      <tr><td>Ajoneuvon käteishinta</td><td>{{ summat.kauppahinta|euro:True }}</td></tr>
+      <tr><td>Jäännösvelka (liike maksaa rahoittajalle)</td><td>{{ summat.jaannosvelka|euro:True }}</td></tr>
+      <tr class="summa"><td>Maksetaan myyjälle yhteensä</td><td>{{ summat.maksettava|euro:True }}</td></tr>
+    {% else %}
+      <tr><td>Kaupan kohteen kauppahinta</td><td>{{ summat.kauppahinta|euro:True }}</td></tr>
+      <tr><td>Toimistokulut</td><td>{{ summat.toimistokulut|euro:True }}</td></tr>
+      <tr><td><strong>Käteishinta yhteensä</strong></td><td><strong>{{ summat.kateishinta|euro:True }}</strong></td></tr>
+      <tr><td>Maksetaan vaihtoajoneuvolla (vaihtohinnat)</td><td>−{{ summat.vaihtohyvitys|euro:True }}</td></tr>
+      {% if summat.jaannosvelka %}<tr><td>Vaihtoajoneuvojen jäännösvelat (liike maksaa rahoittajalle)</td><td>+{{ summat.jaannosvelka|euro:True }}</td></tr>{% endif %}
+      <tr class="summa"><td>{% if summat.maksettava < 0 %}Liike maksaa ostajalle{% else %}Ostaja maksaa yhteensä{% endif %}</td><td>{% if summat.maksettava < 0 %}{{ palautettava|euro:True }}{% else %}{{ summat.maksettava|euro:True }}{% endif %}</td></tr>
+      {% if summat.etumaksu or summat.rahoitettava %}
+      <tr><td>josta etumaksu</td><td>{{ summat.etumaksu|euro:True }}</td></tr>
+      <tr><td>josta rahoitettava osuus{% if s.rahoitusyhtio %} ({{ s.rahoitusyhtio }}){% endif %}</td><td>{{ summat.rahoitettava|euro:True }}</td></tr>
+      <tr><td>Maksetaan toimituksen yhteydessä</td><td>{{ summat.toimituksessa|euro:True }}</td></tr>
+      {% endif %}
+    {% endif %}
+    <tr><td>Maksutapa</td><td>{{ s.get_maksutapa_display }}{% if s.erapaiva %}, eräpäivä {{ s.erapaiva|pvm }}{% endif %}</td></tr>
+    <tr><td>Toimitusaika</td><td>{{ s.toimitusaika|pvm }}</td></tr>
+  </table></div>
+</section>
+
+{% if s.lisatiedot %}
+<section><h2>Lisätiedot ja muut ehdot</h2><div class="teksti">{{ s.lisatiedot }}</div></section>
+{% endif %}
+
+<section>
+  <h2>Vakuutus</h2>
+  <div class="vakuutus">
+    {% if s.tyyppi == 'osto' %}Myyjä vakuuttaa, että kaupan kohteesta antamansa tiedot pitävät paikkansa, että kohde on kokonaan hänen omaisuuttaan jäännösvelkaa lukuun ottamatta ja että siihen kohdistuvat vakuutusmaksut sekä ajoneuvo- ja muut verot ja maksut on maksettu luovutukseen asti.
+    {% else %}Omistusoikeus kaupan kohteeseen siirtyy ostajalle, kun kauppahinta on maksettu kokonaisuudessaan.{% if vaihdot %} Ostaja vakuuttaa, että vaihtoajoneuvoista antamansa tiedot pitävät paikkansa, että vaihtoajoneuvot ovat kokonaan hänen omaisuuttaan ilmoitettua jäännösvelkaa lukuun ottamatta ja että niihin kohdistuvat vakuutusmaksut sekä ajoneuvo- ja muut verot ja maksut on maksettu luovutukseen asti.{% endif %}{% endif %}
+    {% if ehdot %}Sopimukseen sovelletaan liitteenä olevia {% if s.tyyppi == 'osto' %}osto{% else %}myynti{% endif %}ehtoja.{% endif %}
+    Sopimus tulee voimaan, kun molemmat osapuolet ovat allekirjoittaneet sen. Sopimusta on tehty kaksi samasanaista kappaletta, yksi kummallekin osapuolelle.
+  </div>
+</section>
+
+<section>
+  <h2>Allekirjoitukset</h2>
+  <div><table class="lomake allekirjoitukset">
+    <tr><td colspan="2"><span class="nimio">Paikka ja aika</span>{{ liike.postitoimipaikka }} {{ s.pvm|pvm }}</td></tr>
+    <tr><td><div class="viiva">{{ liike.nimi }}{% if s.laatija %} / {{ s.laatija.nimi }}{% endif %}</div></td>
+        <td><div class="viiva">{{ s.vp_nimi }}</div></td></tr>
+    {% if s.vp2_nimi %}<tr><td></td><td><div class="viiva">{{ s.vp2_nimi }}</div></td></tr>{% endif %}
+  </table></div>
+</section>
+
+{% if ehdot %}
+<div class="ehdot">
+  <h2>{% if s.tyyppi == 'osto' %}Ostoehdot{% else %}Myyntiehdot{% endif %} · liite sopimukseen {{ s.numero }}</h2>
+  <div class="teksti">{{ ehdot }}</div>
+</div>
+{% endif %}
+</div>
+</body>
+</html>

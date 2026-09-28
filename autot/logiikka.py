@@ -31,9 +31,9 @@ TILA_JARJESTYS = [k for k, _, _ in TILAT]
 SIIRROT = {
     "tarjottu": ["ostettu", "hylatty"],
     "hylatty": ["tarjottu"],
-    "ostettu": ["tulossa", "kunnostuksessa", "myynnissa", "tarjottu"],
-    "tulossa": ["kunnostuksessa", "myynnissa", "ostettu"],
-    "kunnostuksessa": ["myynnissa", "tulossa"],
+    "ostettu": ["tulossa", "kunnostuksessa", "myynnissa", "myyty", "tarjottu"],
+    "tulossa": ["kunnostuksessa", "myynnissa", "myyty", "ostettu"],
+    "kunnostuksessa": ["myynnissa", "myyty", "tulossa"],
     "myynnissa": ["varattu", "myyty", "kunnostuksessa"],
     "varattu": ["myyty", "myynnissa"],
     "myyty": ["toimitettu", "varattu", "myynnissa"],
@@ -44,6 +44,9 @@ SIIRROT = {
 VARASTOTILAT = ["ostettu", "tulossa", "kunnostuksessa", "myynnissa", "varattu"]
 # Kierros on päättynyt: autolle voi avata uuden kierroksen
 PAATTYNEET = ["myyty", "toimitettu", "hylatty"]
+# Tilat, joissa autolla on aina ostohinta (tietokannan rajoite) ja myyntihinta
+OSTETUT = VARASTOTILAT + ["myyty", "toimitettu"]
+MYYDYT = ["myyty", "toimitettu"]
 
 
 def siirto_sallittu(vanha, uusi):
@@ -66,6 +69,9 @@ OSTOKANAVAT = [
     ("yksityinen", "Yksityinen"),
     ("muu", "Muu"),
 ]
+
+# Kierron ostokanava: yrityksen tyypit + myynnin yhteydessä vaihdossa tullut auto
+KIERRON_OSTOKANAVAT = OSTOKANAVAT + [("vaihto", "Vaihtoauto")]
 
 KULUTYYPIT = [
     ("huutokauppamaksu", "Huutokauppamaksu"),
@@ -315,6 +321,80 @@ def laske_kate(
         verolliset_jalkikulut=int(jalkikulut_verollinen),
         kate=nettomyynti - ostohinta - kulut,
     )
+
+
+# ---------- Sopimukset ----------
+
+
+@dataclass(frozen=True)
+class SopimuksenSummat:
+    """Osto- tai myyntisopimuksen rahavirrat senttiä.
+
+    Ostosopimus (liike ostaa):
+      käteishinta = kohteiden hinnat; jäännösvelka maksetaan rahoittajalle;
+      myyjälle maksetaan käteishinta - jäännösvelka.
+    Myyntisopimus (liike myy, voi ottaa vaihtoajoneuvoja):
+      käteishinta = kohteiden kauppahinnat + toimistokulut
+      vaihtoajoneuvon hinta hyvitetään, ja liike maksaa sen jäännösvelan, joten
+      maksettava = käteishinta - vaihtoautojen hinnat + vaihtoautojen jäännösvelat
+      toimituksen yhteydessä maksetaan = maksettava - etumaksu - rahoitettava osuus.
+      Negatiivinen maksettava = liike maksaa asiakkaalle.
+    """
+
+    kauppahinta: int  # kohteiden hinnat
+    toimistokulut: int
+    kateishinta: int  # kauppahinta + toimistokulut
+    jaannosvelka: int  # ostossa kohteen, myynnissä vaihtoautojen jäännösvelat
+    vaihtohyvitys: int
+    maksettava: int  # osto: liike maksaa myyjälle; myynti: asiakas maksaa liikkeelle
+    etumaksu: int
+    rahoitettava: int
+    toimituksessa: int  # myynti: maksetaan toimituksen yhteydessä
+
+
+def sopimuksen_summat(tyyppi, kohteet, vaihdot=(), *, toimistokulut=0, etumaksu=0, rahoitettava=0):
+    """kohteet ja vaihdot: iteroitavia (hinta, jäännösvelka) -pareja senttiä."""
+    kohteet, vaihdot = list(kohteet), list(vaihdot)
+    kauppahinta = sum(h for h, _ in kohteet)
+    toimistokulut, etumaksu, rahoitettava = toimistokulut or 0, etumaksu or 0, rahoitettava or 0
+    if tyyppi == "osto":
+        if vaihdot:
+            raise ValueError("Ostosopimuksessa ei ole vaihtoajoneuvoja.")
+        jaannosvelka = sum(j or 0 for _, j in kohteet)
+        maksettava = kauppahinta - jaannosvelka
+        return SopimuksenSummat(kauppahinta, 0, kauppahinta, jaannosvelka, 0, maksettava, 0, 0, maksettava)
+    if tyyppi == "myynti":
+        kateishinta = kauppahinta + toimistokulut
+        hyvitys = sum(h for h, _ in vaihdot)
+        jaannosvelka = sum(j or 0 for _, j in vaihdot)
+        maksettava = kateishinta - hyvitys + jaannosvelka
+        return SopimuksenSummat(
+            kauppahinta,
+            toimistokulut,
+            kateishinta,
+            jaannosvelka,
+            hyvitys,
+            maksettava,
+            etumaksu,
+            rahoitettava,
+            maksettava - etumaksu - rahoitettava,
+        )
+    raise ValueError(f"Tuntematon sopimustyyppi: {tyyppi}")
+
+
+def alv_osuus(verollinen_sentit, alv_kasittely, alv_prosentti):
+    """Sopimushinnan ALV:n osuus. Marginaalikaupassa sopimukseen ei merkitä ALV:tä."""
+    if alv_kasittely != "alv":
+        return 0
+    return verollinen_sentit - verottomaksi(verollinen_sentit, alv_prosentti)
+
+
+def kierron_hinta(sopimushinta, alv_kasittely, alv_prosentti):
+    """Sopimuksen käteishinta (sis. mahdollisen alv:n) kierron hinnaksi:
+    marginaali sellaisenaan, ALV-kaupassa veroton."""
+    if alv_kasittely == "alv":
+        return verottomaksi(sopimushinta, alv_prosentti)
+    return sopimushinta
 
 
 def on_jalkikulu(kulun_pvm, myyntipvm):

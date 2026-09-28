@@ -268,3 +268,49 @@ class BruttoNettoTestit(SimpleTestCase):
         k = kate(ostohinta=1_000_000, myyntihinta=1_251_000)
         self.assertEqual(k.netto.kate_prosentti, Decimal(200_000 * 100) / Decimal(1_200_000))
         self.assertEqual(k.brutto.kate_prosentti, Decimal(251_000 * 100) / Decimal(1_251_000))
+
+
+class SopimusSummaTestit(SimpleTestCase):
+    def test_ostosopimus_jaannosvelalla(self):
+        # OMAX-esimerkki: 20 000 €, jäännösvelka 17 474,60 € -> myyjälle 2 525,40 €
+        s = logiikka.sopimuksen_summat("osto", [(2_000_000, 1_747_460)])
+        self.assertEqual((s.kateishinta, s.jaannosvelka, s.maksettava), (2_000_000, 1_747_460, 252_540))
+
+    def test_myynti_vaihtoautolla(self):
+        # Golf 10 000 €, Corolla vaihdossa 3 000 € -> asiakas maksaa 7 000 €
+        s = logiikka.sopimuksen_summat("myynti", [(1_000_000, 0)], [(300_000, 0)])
+        self.assertEqual((s.kauppahinta, s.vaihtohyvitys, s.maksettava), (1_000_000, 300_000, 700_000))
+
+    def test_vaihtoauton_jaannosvelka_lisataan_maksettavaan(self):
+        # Liike maksaa vaihtoauton 2 000 € velan, joten asiakas maksaa sen
+        s = logiikka.sopimuksen_summat("myynti", [(1_000_000, 0)], [(300_000, 200_000), (100_000, 0)])
+        self.assertEqual((s.vaihtohyvitys, s.jaannosvelka, s.maksettava), (400_000, 200_000, 800_000))
+
+    def test_toimistokulut_etumaksu_ja_rahoitus(self):
+        s = logiikka.sopimuksen_summat(
+            "myynti", [(1_000_000, 0)], toimistokulut=19_900, etumaksu=200_000, rahoitettava=500_000
+        )
+        self.assertEqual(s.kateishinta, 1_019_900)
+        self.assertEqual(s.maksettava, 1_019_900)
+        self.assertEqual(s.toimituksessa, 319_900)
+
+    def test_liike_maksaa_asiakkaalle(self):
+        s = logiikka.sopimuksen_summat("myynti", [(500_000, 0)], [(800_000, 0)])
+        self.assertEqual(s.maksettava, -300_000)
+
+    def test_virheelliset(self):
+        with self.assertRaises(ValueError):
+            logiikka.sopimuksen_summat("osto", [(1, 0)], [(1, 0)])
+        with self.assertRaises(ValueError):
+            logiikka.sopimuksen_summat("vuokra", [(1, 0)])
+
+    def test_alv_osuus_ja_kierron_hinta(self):
+        self.assertEqual(logiikka.alv_osuus(1_255_000, "alv", ALV), 255_000)
+        self.assertEqual(logiikka.alv_osuus(1_255_000, "marginaali", ALV), 0)
+        self.assertEqual(logiikka.kierron_hinta(1_255_000, "alv", ALV), 1_000_000)
+        self.assertEqual(logiikka.kierron_hinta(1_255_000, "marginaali", ALV), 1_255_000)
+
+    def test_varastoon_vain_ostettuina(self):
+        self.assertEqual(set(logiikka.VARASTOTILAT) - set(logiikka.OSTETUT), set())
+        self.assertNotIn("tarjottu", logiikka.OSTETUT)
+        self.assertTrue(logiikka.siirto_sallittu("kunnostuksessa", "myyty"))

@@ -19,6 +19,8 @@ from autot.models import (
     Kuntoraportti,
     Kuva,
     Rengassarja,
+    Sopimus,
+    SopimusRivi,
     Tehtava,
     Tehtavapohja,
     Varuste,
@@ -146,6 +148,10 @@ class ManageriTestit(Pohja):
                 lambda: Varuste.objects.create(kategoria=self.b.kategoria, nimi="x"),
                 lambda: AjoneuvonVaruste.objects.create(ajoneuvo=self.a.ajoneuvo, varuste=self.b.varuste),
                 lambda: Vaurio.objects.create(kierto=self.a.kierto, kohta="x", kuva=self.b.kuva),
+                lambda: SopimusRivi.objects.create(
+                    sopimus=self.a.sopimus, kierto=self.b.kierto, hinta=1, merkki_malli="x"
+                ),
+                lambda: Sopimus.objects.create(tyyppi="osto", numero=99, vastapuoli=self.b.yritys, vp_nimi="x"),
             ]
             for i, luonti in enumerate(yritykset):
                 with self.subTest(i=i), self.assertRaises(VaaraLiike):
@@ -196,6 +202,8 @@ class LukuTestit(Pohja):
             reverse("autot:tehtavapohjat"),
             reverse("autot:varusteet"),
             reverse("autot:asetukset"),
+            reverse("autot:sopimukset"),
+            reverse("autot:sopimus", args=[self.a.sopimus.pk]),
             reverse("autot:kortti", args=[self.a.kierto.pk]) + "?v=historia",
             reverse("autot:kortti", args=[self.a.kierto.pk]) + "?v=tehtavat",
             reverse("autot:kortti", args=[self.a.kierto.pk]) + "?v=kunto",
@@ -252,6 +260,8 @@ class KirjoitusTestit(Pohja):
             self.assertEqual(Kuntoraportti.objects.get(pk=self.b.raportti.pk).avaimet, 2)
             self.assertEqual(Varuste.objects.get(pk=self.b.varuste.pk).aktiivinen, True)
             self.assertTrue(Tehtavapohja.objects.filter(pk=self.b.pohja.pk).exists())
+            self.assertEqual(Sopimus.objects.count(), 1)
+            self.assertEqual(Sopimus.objects.get().lisatiedot, "Sopimus b")
             self.assertTrue(Varustekategoria.objects.filter(pk=self.b.kategoria.pk).exists())
             self.assertEqual(Kayttaja.liikkeen.get(pk=self.b.myyja.pk).rooli, "myynti")
 
@@ -356,6 +366,36 @@ class KirjoitusTestit(Pohja):
             self.assertFalse(Tehtava.objects.filter(otsikko="x").exists())
             self.assertFalse(Tehtavapohja.objects.filter(otsikko="y").exists())
             self.assertFalse(Ajoneuvo.objects.filter(merkki="Kia").exists())
+        self.assert_b_ennallaan()
+
+    def test_sopimukset(self):
+        """Toisen liikkeen sopimus, kierto tai yritys: 404, eikä mitään tallennu."""
+        for url in [
+            reverse("autot:sopimus", args=[self.b.sopimus.pk]),
+            reverse("autot:ostosopimus", args=[self.b.kierto.pk]),
+            reverse("autot:myyntisopimus", args=[self.b.kierto.pk]),
+            reverse("autot:vastapuoli") + f"?s-valittu={self.b.yritys.pk}",
+        ]:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url, **HTMX).status_code, 404)
+        data = {
+            "s-valittu": self.b.asiakas.pk,
+            "s-pvm": "2026-09-01",
+            "s-maksutapa": "tilisiirto",
+            "s-tunnistus": "ei",
+            "kohde-hinta": "10000",
+            "vaihto-TOTAL_FORMS": "0",
+            "vaihto-INITIAL_FORMS": "0",
+        }
+        for nimi in ["autot:ostosopimus", "autot:myyntisopimus"]:
+            with self.subTest(nimi=nimi):
+                self.assertEqual(self.client.post(reverse(nimi, args=[self.b.kierto.pk]), data).status_code, 404)
+        # Oma auto, mutta vastapuoleksi toisen liikkeen asiakas: lomake hylkää
+        vastaus = self.client.post(reverse("autot:myyntisopimus", args=[self.a.kierto.pk]), data)
+        self.assertEqual(vastaus.status_code, 422)
+        with liike_kaytossa(self.a.liike):
+            self.assertEqual(Kierto.objects.get(pk=self.a.kierto.pk).tila, "myynnissa")
+            self.assertEqual(Sopimus.objects.count(), 1)
         self.assert_b_ennallaan()
 
     def test_hallinta_404(self):

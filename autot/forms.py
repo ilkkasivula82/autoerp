@@ -5,10 +5,12 @@ __init__:ssä pyynnön aikana, jolloin ne rajautuvat käyttäjän liikkeeseen.
 """
 
 from django import forms
+from django.utils import timezone
 
-from liikkeet.models import Kayttaja, Rooli
+from liikkeet.models import Kayttaja, Liike, Rooli
 
 from . import logiikka
+from . import sopimukset as sopimuspalvelu
 from .models import (
     Ajoneuvo,
     Kierto,
@@ -16,6 +18,8 @@ from .models import (
     Kulu,
     Kuntoraportti,
     Rengassarja,
+    Sopimus,
+    SopimusRivi,
     Tehtava,
     Tehtavapohja,
     Varuste,
@@ -153,8 +157,15 @@ class UusiAutoLomake(KoodiKentat, forms.Form):
     tarjottu_hinta = EuroKentta(label="Pyydetty hinta (€)")
     alv_kasittely = forms.ChoiceField(label="Verokohtelu", choices=logiikka.ALV_KASITTELYT, initial="marginaali")
     huomiot = forms.CharField(label="Huomiot", widget=forms.Textarea, required=False)
-    heti_ostettu = forms.BooleanField(label="Ostettu heti (ohitetaan tarjousvaihe)", required=False)
-    ostohinta = EuroKentta(label="Ostohinta (€)")
+    KIRJAUKSET = [
+        ("tarjous", "Tarjous: autoa ei ole vielä ostettu"),
+        ("ostosopimus", "Ostetaan: tehdään ostosopimus myyjän kanssa"),
+        ("varasto", "Suoraan varastoon (ostohinta pakollinen)"),
+    ]
+    kirjaus = forms.ChoiceField(
+        label="Mitä kirjataan?", choices=KIRJAUKSET, initial="tarjous", required=False, widget=forms.RadioSelect
+    )
+    ostohinta = EuroKentta(label="Ostohinta (€, ALV-autossa veroton)")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -169,8 +180,9 @@ class UusiAutoLomake(KoodiKentat, forms.Form):
 
     def clean(self):
         data = super().clean()
-        if data.get("heti_ostettu") and data.get("ostohinta") is None:
-            self.add_error("ostohinta", "Anna ostohinta, kun auto on ostettu heti.")
+        data["kirjaus"] = data.get("kirjaus") or "tarjous"
+        if data["kirjaus"] == "varasto" and data.get("ostohinta") is None:
+            self.add_error("ostohinta", "Anna ostohinta, kun auto lisätään suoraan varastoon.")
         return data
 
 
@@ -219,6 +231,15 @@ class KauppaLomake(Suomeksi, forms.ModelForm):
         self.fields["asiakas"].queryset = _yritykset()
         self.fields["km"].label = "Kilometrit (tällä kierroksella)"
         self.fields["sijainti"].widget.attrs["placeholder"] = "esim. piha, halli, kunnostaja"
+
+    def clean(self):
+        data = super().clean()
+        tila = self.instance.tila
+        if tila in logiikka.OSTETUT and data.get("ostohinta") is None:
+            self.add_error("ostohinta", "Varastossa olevalla autolla pitää olla ostohinta.")
+        if tila in logiikka.MYYDYT and data.get("myyntihinta") is None:
+            self.add_error("myyntihinta", "Myydyllä autolla pitää olla myyntihinta.")
+        return data
 
 
 class SiirtoLomake(Suomeksi, forms.Form):
@@ -355,7 +376,20 @@ class TehtavapohjaLomake(forms.ModelForm):
 class YritysLomake(Suomeksi, forms.ModelForm):
     class Meta:
         model = Yritys
-        fields = ["nimi", "y_tunnus", "tyyppi", "yhteyshenkilo", "puhelin", "sahkoposti", "huomiot"]
+        fields = [
+            "nimi",
+            "y_tunnus",
+            "tyyppi",
+            "yhteyshenkilo",
+            "puhelin",
+            "sahkoposti",
+            "lahiosoite",
+            "postinumero",
+            "postitoimipaikka",
+            "tilinumero",
+            "alv_velvollinen",
+            "huomiot",
+        ]
         widgets = {"huomiot": forms.Textarea(attrs={"rows": 3})}
 
 
@@ -396,12 +430,31 @@ class KayttajaLomake(forms.ModelForm):
         return kayttaja
 
 
-class LiikeLomake(forms.Form):
-    nimi = forms.CharField(label="Nimi", max_length=200)
-    y_tunnus = forms.CharField(label="Y-tunnus", max_length=20, required=False)
+class LiikeLomake(forms.ModelForm):
     alv_prosentti = ProsenttiKentta(
         label="Yleinen ALV-kanta (%)", max_digits=5, decimal_places=2, min_value=0, max_value=100
     )
+
+    class Meta:
+        model = Liike
+        fields = [
+            "nimi",
+            "y_tunnus",
+            "alv_prosentti",
+            "lahiosoite",
+            "postinumero",
+            "postitoimipaikka",
+            "puhelin",
+            "sahkoposti",
+            "tilinumero",
+            "ostoehdot",
+            "myyntiehdot",
+        ]
+        widgets = {"ostoehdot": forms.Textarea(attrs={"rows": 6}), "myyntiehdot": forms.Textarea(attrs={"rows": 6})}
+        help_texts = {
+            "ostoehdot": "Tulostetaan ostosopimuksen liitteeksi.",
+            "myyntiehdot": "Tulostetaan myyntisopimuksen liitteeksi.",
+        }
 
 
 class KoodiLomake(forms.ModelForm):
@@ -441,3 +494,156 @@ class VarusteMuokkausLomake(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["kategoria"].queryset = Varustekategoria.objects.all()
+
+
+# ---------- Sopimukset ----------
+
+
+class SopimusLomake(Suomeksi, forms.ModelForm):
+    """Sopimuksen yleiset tiedot ja vastapuoli (valitaan rekisteristä tai kirjoitetaan uusi)."""
+
+    valittu = forms.ModelChoiceField(
+        label="Asiakas / yritys rekisteristä", queryset=Yritys.kaikki.none(), required=False
+    )
+    toimistokulut = EuroKentta(label="Toimistokulut (€)")
+    etumaksu = EuroKentta(label="Etumaksu (€)")
+    rahoitettava = EuroKentta(label="Rahoitettava osuus (€)")
+
+    def clean_toimistokulut(self):
+        return self.cleaned_data.get("toimistokulut") or 0
+
+    def clean_etumaksu(self):
+        return self.cleaned_data.get("etumaksu") or 0
+
+    def clean_rahoitettava(self):
+        return self.cleaned_data.get("rahoitettava") or 0
+
+    class Meta:
+        model = Sopimus
+        fields = [
+            "vp_nimi",
+            "vp_tunnus",
+            "vp_lahiosoite",
+            "vp_postinumero",
+            "vp_postitoimipaikka",
+            "vp_puhelin",
+            "vp_sahkoposti",
+            "vp_tilinumero",
+            "vp_alv_velvollinen",
+            "vp2_nimi",
+            "vp2_tunnus",
+            "vp2_osoite",
+            "vp2_puhelin",
+            "vp2_sahkoposti",
+            "tunnistus",
+            "pep",
+            "pvm",
+            "toimitusaika",
+            "maksutapa",
+            "erapaiva",
+            "rahoitusyhtio",
+            "lisatiedot",
+        ]
+        widgets = {
+            "pvm": PvmSyote(),
+            "toimitusaika": PvmSyote(),
+            "erapaiva": PvmSyote(),
+            "lisatiedot": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["valittu"].queryset = _yritykset()
+        self.fields["vp_nimi"].required = False
+        self.fields["pvm"].initial = timezone.localdate()
+
+    def clean(self):
+        data = super().clean()
+        valittu = data.get("valittu")
+        if not valittu and not data.get("vp_nimi"):
+            self.add_error("vp_nimi", "Valitse vastapuoli rekisteristä tai anna nimi.")
+        if valittu:
+            # Tyhjät kentät täydennetään rekisterin tiedoista
+            for kentta, arvo in sopimuspalvelu.vastapuolen_tiedot(valittu).items():
+                if data.get(kentta) in (None, "") and kentta != "vp_alv_velvollinen":
+                    data[kentta] = arvo
+        return data
+
+
+ILMOITETUT = ["kolaroitu", "maahantuotu", "mittari_vastaa", "rakennemuutoksia"]
+
+
+class KohdeLomake(Suomeksi, forms.Form):
+    """Kaupan kohteen hinta ja ehdot. Hinta on käteishinta sis. mahdollisen alv:n."""
+
+    hinta = EuroKentta(label="Käteishinta (€, sis. alv)", required=True)
+    jaannosvelka = EuroKentta(label="Jäännösvelka (€)")
+    jaannosvelan_haltija = forms.CharField(label="Jäännösvelan haltija", max_length=200, required=False)
+    alv_kasittely = forms.ChoiceField(
+        label="Verotus",
+        choices=logiikka.ALV_KASITTELYT,
+        initial="marginaali",
+        required=False,
+        help_text="Normaali ALV vain, jos auto on ollut myyjällä 100 % vähennykseen oikeuttavassa käytössä.",
+    )
+    km = forms.IntegerField(label="Mittarilukema (km)", required=False, min_value=0)
+    katsastettu = forms.DateField(label="Edellinen katsastus", required=False, widget=PvmSyote())
+    kolaroitu = forms.ChoiceField(label="Kolaroitu", choices=[("", "")] + SopimusRivi.ILMOITUS, required=False)
+    maahantuotu = forms.ChoiceField(
+        label="Tuotu käytettynä maahan", choices=[("", "")] + SopimusRivi.ILMOITUS, required=False
+    )
+    mittari_vastaa = forms.ChoiceField(
+        label="Mittarilukema vastaa ajomäärää", choices=[("", "")] + SopimusRivi.ILMOITUS, required=False
+    )
+    rakennemuutoksia = forms.ChoiceField(
+        label="Rakenteellisia muutoksia", choices=[("", "")] + SopimusRivi.ILMOITUS, required=False
+    )
+
+    def clean_jaannosvelka(self):
+        return self.cleaned_data.get("jaannosvelka") or 0
+
+
+class VaihtoLomake(KohdeLomake):
+    """Myyntisopimuksen vaihtoajoneuvo. Tyhjä lomake ohitetaan."""
+
+    rekisterinumero = forms.CharField(label="Rekisterinumero", max_length=20, required=False)
+    vin = forms.CharField(label="VIN", max_length=17, required=False)
+    merkki = forms.CharField(label="Merkki", max_length=100, required=False)
+    malli = forms.CharField(label="Malli", max_length=100, required=False)
+    mallitarkenne = forms.CharField(label="Mallitarkenne", max_length=200, required=False)
+    vuosimalli = forms.IntegerField(label="Vuosimalli", required=False, min_value=1900, max_value=2100)
+    ensirekisterointi = forms.DateField(label="Ensirekisteröinti", required=False, widget=PvmSyote())
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["hinta"].required = False
+        self.fields["hinta"].label = "Vaihtohinta (€)"
+        self.order_fields(
+            ["rekisterinumero", "vin", "merkki", "malli", "mallitarkenne", "vuosimalli", "ensirekisterointi", "km"]
+        )
+
+    def clean_rekisterinumero(self):
+        return logiikka.normalisoi_rekisteri(self.cleaned_data.get("rekisterinumero"))
+
+    def clean_vin(self):
+        return (self.cleaned_data.get("vin") or "").strip().upper()
+
+    TUNNISTAVAT = ("rekisterinumero", "vin", "merkki", "malli", "hinta")
+
+    def has_changed(self):
+        """Rivi on täytetty vain, jos siinä on ajoneuvo tai hinta (oletusvalinnat eivät riitä)."""
+        return any(self[k].data not in (None, "") for k in self.TUNNISTAVAT)
+
+    def clean(self):
+        data = super().clean()
+        if not self.has_changed():
+            return data
+        for kentta in ("merkki", "malli", "hinta"):
+            if data.get(kentta) in (None, ""):
+                self.add_error(kentta, "Pakollinen vaihtoajoneuvolle.")
+        if not (data.get("rekisterinumero") or data.get("vin")):
+            self.add_error("rekisterinumero", "Anna rekisterinumero tai VIN.")
+        return data
+
+
+VaihtoFormset = forms.formset_factory(VaihtoLomake, extra=2)

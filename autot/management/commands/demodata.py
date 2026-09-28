@@ -21,6 +21,7 @@ from autot.models import (
     Kulu,
     Kuntoraportti,
     Rengassarja,
+    Sopimus,
     Tehtava,
     Tehtavapohja,
     Tilahistoria,
@@ -51,7 +52,16 @@ class Command(BaseCommand):
             for liike in olemassa:
                 self._poista_liike(liike)
 
-        liike = Liike.objects.create(nimi=nimi)
+        liike = Liike.objects.create(
+            nimi=nimi,
+            y_tunnus="1234567-8",
+            lahiosoite="Autokatu 1",
+            postinumero="05800",
+            postitoimipaikka="Hyvinkää",
+            puhelin="+358 40 123 4567",
+            sahkoposti=f"myynti@{sahkopostipaate}",
+            tilinumero="FI00 1234 5600 0007 85",
+        )
         alusta_liike(liike)
         with liike_kaytossa(liike):
             kayttajat = self._kayttajat(liike, sahkopostipaate, salasana)
@@ -63,6 +73,7 @@ class Command(BaseCommand):
     def _poista_liike(self, liike):
         # Suojatut viittaukset (PROTECT) poistetaan oikeassa järjestyksessä.
         with liike_kaytossa(liike):
+            Sopimus.objects.all().delete()
             Kierto.objects.all().delete()
             Ajoneuvo.objects.all().delete()
             Yritys.objects.all().delete()
@@ -295,6 +306,9 @@ class Command(BaseCommand):
         )
         kulu(k9, "pesu", 12000, 25)
 
+        # Sopimukset (tehtävät syntyvät näissä tilasiirroista, joten ne tehdään tehtäväsilmukan jälkeen)
+        self._sopimukset(kayttajat, y)
+
         # Vaiheiden tehtävät avoimille autoille (normaalisti syntyvät tilasiirrossa)
         for k in Kierto.objects.exclude(tila__in=["toimitettu", "hylatty"]):
             for p in Tehtavapohja.objects.filter(tila=k.tila):
@@ -302,3 +316,81 @@ class Command(BaseCommand):
                 Tehtava.objects.create(
                     kierto=k, tila_vaihe=k.tila, otsikko=p.otsikko, rooli=p.rooli, erapaiva=ep, luonut=admin
                 )
+
+    def _sopimukset(self, kayttajat, y):
+        """Esimerkkisopimukset: ostosopimus tarjotulle autolle ja myyntisopimus vaihtoautolla."""
+        from autot import sopimukset
+
+        myyja = kayttajat["myynti"]
+        alv = Liike.objects.get(pk=myyja.liike_id).alv_prosentti
+        tarjottu = Kierto.objects.get(ajoneuvo__rekisterinumero="SKO-555")
+        sopimukset.tee_ostosopimus(
+            tarjottu,
+            kayttajat["osto"],
+            yritys=y["Huutokauppa Esimerkki"],
+            tiedot={"maksutapa": "tilisiirto"},
+            kohde={
+                "hinta": 1_350_000,
+                "alv_kasittely": "marginaali",
+                "kolaroitu": "ei",
+                "maahantuotu": "ei",
+                "mittari_vastaa": "kylla",
+                "rakennemuutoksia": "ei",
+            },
+            alv_prosentti=alv,
+        )
+        # Myydään Golf 10 000 €, Corolla vaihdossa 3 000 € -> asiakas maksaa 7 000 €
+        golf = Ajoneuvo.objects.create(
+            rekisterinumero="GOL-123",
+            vin="WVWZZZ1KZ9W000010",
+            merkki="Volkswagen",
+            malli="Golf",
+            mallitarkenne="1.4 TSI Comfortline",
+            vuosimalli=2017,
+            kayttovoima="01",
+            vaihteisto="1",
+            korimalli="AB",
+        )
+        kierto = sopimukset.palvelut.avaa_kierto(
+            golf,
+            kayttajat["osto"],
+            tila="ostettu",
+            km=132_000,
+            toimittaja=y["Autotalo Mallinen Oy"],
+            ostokanava="autoliike",
+            ostohinta=820_000,
+            pyyntihinta=1_000_000,
+        )
+        yksityinen = Yritys.objects.create(
+            nimi="Matti Esimerkki",
+            tyyppi="yksityinen",
+            lahiosoite="Kotikatu 2",
+            postinumero="05800",
+            postitoimipaikka="Hyvinkää",
+            puhelin="040 000 0000",
+        )
+        sopimukset.tee_myyntisopimus(
+            kierto,
+            myyja,
+            yritys=yksityinen,
+            tiedot={"tunnistus": "ajokortti", "maksutapa": "tilisiirto"},
+            kohde={"hinta": 1_000_000},
+            vaihdot=[
+                {
+                    "rekisterinumero": "COR-321",
+                    "merkki": "Toyota",
+                    "malli": "Corolla",
+                    "mallitarkenne": "1.6 Linea Sol",
+                    "vuosimalli": 2012,
+                    "km": 210_000,
+                    "hinta": 300_000,
+                    "jaannosvelka": 0,
+                    "alv_kasittely": "marginaali",
+                    "kolaroitu": "ei",
+                    "maahantuotu": "ei",
+                    "mittari_vastaa": "kylla",
+                    "rakennemuutoksia": "ei",
+                }
+            ],
+            alv_prosentti=alv,
+        )

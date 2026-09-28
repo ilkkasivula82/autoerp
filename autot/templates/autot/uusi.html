@@ -2,7 +2,7 @@
 {% block otsikko %}Uusi auto{% endblock %}
 {% block sisalto %}
 <div class="otsikkorivi"><div><h1>Uusi auto / tarjous</h1>
-<div class="himmea">Kirjaa auto, joka on tarjottu meille. Ostopäätös tehdään kortilla. Jos auto on jo ostettu, valitse "Ostettu heti".</div></div></div>
+<div class="himmea">Kirjaa tarjottu auto, tee ostosopimus tai lisää auto suoraan varastoon.</div></div></div>
 
 <form method="post" novalidate>
 {% csrf_token %}
@@ -38,7 +38,9 @@
     {% include "_kentta.html" with kentta=lomake.tarjottu_hinta %}
     {% include "_kentta.html" with kentta=lomake.alv_kasittely %}
     {% include "_kentta.html" with kentta=lomake.huomiot leve=True %}
-    <div class="leveä"><label style="display:flex;gap:8px;align-items:center;color:inherit">{{ lomake.heti_ostettu }} {{ lomake.heti_ostettu.label }}</label></div>
+    <div class="leveä"><label>{{ lomake.kirjaus.label }}</label>
+      <div class="kirjaustavat">{% for r in lomake.kirjaus %}<label>{{ r.tag }} {{ r.choice_label }}</label>{% endfor %}</div>
+      <p class="pieni himmea" style="margin:4px 0 0">Varastoon auto tulee ostosopimuksella, myyntisopimuksen vaihtoautona tai suoraan ostohinnalla.</p></div>
     {% include "_kentta.html" with kentta=lomake.ostohinta piilo="ostohinta-kentta" %}
   </div>
 </div>

@@ -13,7 +13,18 @@ from django.urls import reverse
 from django.utils import timezone
 
 from autot import palvelut
-from autot.models import Ajoneuvo, Kierto, Kulu, Kulusummat, Kuva, Muutosloki, Tehtava, Tilahistoria, Yritys
+from autot.models import (
+    Ajoneuvo,
+    Kierto,
+    Kulu,
+    Kulusummat,
+    Kuva,
+    Muutosloki,
+    Sopimus,
+    Tehtava,
+    Tilahistoria,
+    Yritys,
+)
 from liikkeet.models import Kayttaja, Liike
 from liikkeet.rajaus import liike_kaytossa
 
@@ -93,7 +104,7 @@ class UusiAutoTestit(Pohja):
             {
                 "merkki": "Kia",
                 "malli": "Ceed",
-                "heti_ostettu": "on",
+                "kirjaus": "varasto",
                 "alv_kasittely": "marginaali",
             },
         )
@@ -104,7 +115,7 @@ class UusiAutoTestit(Pohja):
             {
                 "merkki": "Kia",
                 "malli": "Ceed",
-                "heti_ostettu": "on",
+                "kirjaus": "varasto",
                 "ostohinta": "8000",
                 "alv_kasittely": "alv",
             },
@@ -582,7 +593,7 @@ class SivutTestit(TestCase):
         with liike_kaytossa(demo):
             kierrot = list(Kierto.objects.values_list("pk", flat=True))
             urlit.append(reverse("autot:yritys", args=[Yritys.objects.first().pk]))
-        self.assertEqual(len(kierrot), 10)
+        self.assertEqual(len(kierrot), 12)
         for kid in kierrot:
             for v in [
                 "yhteenveto",
@@ -609,8 +620,8 @@ class SivutTestit(TestCase):
         self.client.force_login(Kayttaja.objects.get(sahkoposti="admin@demo.test"))
         vastaus = self.client.get(reverse("autot:raportit") + "?alku=2000-01-01&loppu=2100-01-01")
         yht = vastaus.context["yht"]
-        # Demossa neljä myytyä: Mercedes, Audi (vanha kierros), Peugeot, Tesla
-        self.assertEqual(yht["n"], 4)
+        # Demossa viisi myytyä: Mercedes, Audi (vanha kierros), Peugeot, Tesla ja sopimuksella myyty Golf
+        self.assertEqual(yht["n"], 5)
         self.assertEqual(yht["kate"], sum(r.luvut.kate for r in vastaus.context["rivit"]))
 
 
@@ -623,8 +634,9 @@ class KomentoTestit(TestCase):
         self.assertEqual(Liike.objects.filter(nimi="Demo Autot Oy").count(), 1)
         liike = Liike.objects.get(nimi="Demo Autot Oy")
         with liike_kaytossa(liike):
-            self.assertEqual(Kierto.objects.count(), 10)
-            self.assertEqual(Ajoneuvo.objects.count(), 9)
+            self.assertEqual(Kierto.objects.count(), 12)
+            self.assertEqual(Ajoneuvo.objects.count(), 11)
+            self.assertEqual(Sopimus.objects.count(), 2)
 
     def test_luo_liike(self):
         import os
@@ -709,13 +721,13 @@ class HintanakymaTestit(Pohja):
         self.assertEqual(vastaus.context["yht"]["kate"], 1_506_000 - 1_255_000 - 15_437)
         self.assertEqual(vastaus.context["yht"]["myynti"], 1_506_000)
 
-    def test_raportti_ohittaa_myynnin_ilman_ostohintaa(self):
-        Kierto.objects.filter(pk=self.d.kierto.pk).update(
-            ostohinta=None, myyntihinta=1_000_000, myyntipvm=timezone.localdate()
-        )
-        vastaus = self.client.get(reverse("autot:raportit") + "?alku=2000-01-01&loppu=2100-01-01")
-        self.assertEqual(vastaus.status_code, 200)
-        self.assertIsNone(vastaus.context["yht"])
+    def test_tietokanta_estaa_varastoauton_ilman_ostohintaa(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Kierto.objects.filter(pk=self.d.kierto.pk).update(ostohinta=None)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Kierto.objects.filter(pk=self.d.kierto.pk).update(tila="myyty", myyntihinta=None)
+        # Tarjotulla autolla ostohintaa ei vielä ole
+        Kierto.objects.create(ajoneuvo=Ajoneuvo.objects.create(merkki="Kia", malli="Rio"), tila="tarjottu")
 
     def test_sidottu_paaoma(self):
         k = Kierto.objects.kulusummilla().get(pk=self.d.kierto.pk)
@@ -760,8 +772,9 @@ class KulunVerollinenMigraatioTesti(TransactionTestCase):
 
     def test_migraatio(self):
         executor = MigrationExecutor(connection)
-        executor.migrate([("autot", "0001_initial")])
-        vanhat = executor.loader.project_state([("autot", "0001_initial")]).apps
+        alku = [("autot", "0001_initial"), ("liikkeet", "0001_initial")]
+        executor.migrate(alku)
+        vanhat = executor.loader.project_state(alku).apps
         liike = vanhat.get_model("liikkeet", "Liike").objects.create(nimi="M")
         ajoneuvo = vanhat.get_model("autot", "Ajoneuvo").objects.create(liike=liike, merkki="A", malli="B")
         kierto = vanhat.get_model("autot", "Kierto").objects.create(liike=liike, ajoneuvo=ajoneuvo)

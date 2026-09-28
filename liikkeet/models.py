@@ -13,6 +13,15 @@ class Liike(models.Model):
     nimi = models.CharField(max_length=200)
     y_tunnus = models.CharField(max_length=20, blank=True)
     alv_prosentti = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("25.5"))
+    # Sopimuksille tulostettavat tiedot
+    lahiosoite = models.CharField("lähiosoite", max_length=200, blank=True)
+    postinumero = models.CharField("postinumero", max_length=10, blank=True)
+    postitoimipaikka = models.CharField("postitoimipaikka", max_length=100, blank=True)
+    puhelin = models.CharField("puhelin", max_length=50, blank=True)
+    sahkoposti = models.EmailField("sähköposti", blank=True)
+    tilinumero = models.CharField("tilinumero (IBAN)", max_length=40, blank=True)
+    ostoehdot = models.TextField("ostosopimuksen ehdot", blank=True)
+    myyntiehdot = models.TextField("myyntisopimuksen ehdot", blank=True)
     luotu = models.DateTimeField(auto_now_add=True)
 
     class Meta:

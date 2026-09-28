@@ -189,12 +189,9 @@ def asetukset(request):
     liike = request.liike
     if request.method == "POST":
         if request.POST.get("toiminto") == "liike":
-            lomake = LiikeLomake(request.POST)
+            lomake = LiikeLomake(request.POST, instance=liike)
             if lomake.is_valid():
-                liike.nimi = lomake.cleaned_data["nimi"]
-                liike.y_tunnus = lomake.cleaned_data["y_tunnus"]
-                liike.alv_prosentti = lomake.cleaned_data["alv_prosentti"]
-                liike.save()
+                lomake.save()
                 messages.success(request, "Asetukset tallennettu.")
             else:
                 messages.error(request, "Tarkista asetukset.")
@@ -213,9 +210,7 @@ def asetukset(request):
         request,
         "autot/asetukset.html",
         {
-            "liikelomake": LiikeLomake(
-                initial={"nimi": liike.nimi, "y_tunnus": liike.y_tunnus, "alv_prosentti": liike.alv_prosentti}
-            ),
+            "liikelomake": LiikeLomake(instance=liike),
             "koodiryhmat": ryhmat,
         },
     )

@@ -39,6 +39,28 @@ Testit: `python manage.py test`.
   kuvat (ulko / sisä / vaurio / dokumentti), varustekatalogi, yritykset (toimittajat ja asiakkaat), muutosloki.
 - **Rahat sentteinä**, pyöristys `Decimal`-aritmetiikalla.
 
+### Miten auto tulee varastoon
+
+Tarjottu auto (ei vielä ostettu) voidaan kirjata ilman ostohintaa. Varastoon auto tulee vain näin:
+
+1. **Ostosopimuksella** (kortilla "Tee ostosopimus" tai Uusi auto → "Ostetaan"): sopimuksen hinta on ostohinta.
+2. **Myyntisopimuksen vaihtoajoneuvona**: vaihtohinta on vaihtoauton ostohinta, ostokanavana "Vaihtoauto".
+3. **Suoraan varastoon** (Uusi auto → "Suoraan varastoon" tai tilasiirto "Ostettu ilman sopimusta"): ostohinta pakollinen.
+
+Tietokannan rajoite varmistaa, ettei varastossa tai myytynä ole autoa ilman ostohintaa eikä myytyä ilman myyntihintaa.
+
+### Sopimukset
+
+Osto- ja myyntisopimus tallennetaan omana tietueenaan (vastapuolen ja ajoneuvon tiedot sopimushetkeltä,
+juokseva sopimusnumero liikkeittäin) ja tulostetaan selaimesta (Tulosta / tallenna PDF).
+
+- Myyntisopimus: maksettava = kauppahinta + toimistokulut − vaihtohinnat + vaihtoautojen jäännösvelat;
+  toimituksessa maksetaan = maksettava − etumaksu − rahoitettava osuus.
+  Esim. Golf 10 000 €, Corolla vaihdossa 3 000 € → asiakas maksaa 7 000 €, Corolla varastoon 3 000 €:lla.
+- Ostosopimus: myyjälle maksetaan = käteishinta − jäännösvelka.
+- Hinnat sopimuksella ovat käteishintoja (ALV-kaupassa verollisia); kierrolle tallennetaan ALV-kaupassa veroton hinta.
+- Liikkeen yhteystiedot sekä omat osto- ja myyntiehdot (sopimuksen liitteeksi) asetetaan Hallinta → Asetukset.
+
 ### Monivuokraajuus
 
 Jokainen rivi kuuluu liikkeelle (`liike_id`). `LiikeMiddleware` aktivoi kirjautuneen käyttäjän liikkeen,

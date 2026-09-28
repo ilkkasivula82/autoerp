@@ -149,7 +149,7 @@ def uusi(request):
                     tekstit = {k: d.get(k) or "" for k in ["rekisterinumero", "vin"] + AJONEUVON_TIEDOT}
                     tekstit.pop("vuosimalli")
                     ajoneuvo = Ajoneuvo.objects.create(vuosimalli=d.get("vuosimalli"), **tekstit)
-                tila = "ostettu" if d["heti_ostettu"] else "tarjottu"
+                tila = "ostettu" if d["kirjaus"] == "varasto" else "tarjottu"
                 kierto = palvelut.avaa_kierto(
                     ajoneuvo,
                     request.user,
@@ -171,7 +171,9 @@ def uusi(request):
                 "Auto on ollut meillä aiemmin. Sille avattiin uusi kierros, ja aiemmat "
                 "kierrokset näkyvät Historia-välilehdellä.",
             )
-        else:
+        elif d["kirjaus"] != "ostosopimus":
             messages.success(request, "Auto lisätty.")
+        if d["kirjaus"] == "ostosopimus":
+            return redirect("autot:ostosopimus", kid=kierto.pk)
         return kortille(kierto.pk)
     return render(request, "autot/uusi.html", {"lomake": lomake})
