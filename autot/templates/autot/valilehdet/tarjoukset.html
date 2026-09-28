@@ -1,0 +1,36 @@
+<div class="kortti">
+  <div class="otsikkorivi" style="margin-bottom:8px">
+    <h2 style="margin:0">Myyntitarjoukset</h2>
+    {% if voi_myyda %}<a class="nappi ensisijainen" href="{% url 'autot:uusi_tarjous' k.id %}">+ Tee myyntitarjous</a>{% endif %}
+  </div>
+  {% if tarjoukset %}
+  <div class="taulukko-kaari">
+  <table>
+    <thead><tr><th>Nro</th><th>Päiväys</th><th>Asiakas</th><th class="num">Hinta</th><th>Vaihtoauto</th><th class="num">Maksettava</th><th>Tila</th><th></th></tr></thead>
+    {% for t in tarjoukset %}
+    <tr>
+      <td><a href="{% url 'autot:tarjous' t.id %}">{{ t.numero }}</a></td>
+      <td>{{ t.pvm|pvm }}{% if t.voimassa %}<div class="pieni himmea">voimassa {{ t.voimassa|pvm }}</div>{% endif %}</td>
+      <td>{{ t.vp_nimi }}{% if t.vp_puhelin %}<div class="pieni himmea">{{ t.vp_puhelin }}</div>{% endif %}</td>
+      <td class="num">{{ t.summat_.kateishinta|euro }}</td>
+      <td>{% if t.on_vaihtoauto %}{{ t.vaihto_merkki }} {{ t.vaihto_malli }} {{ t.vaihto_rekisterinumero }}<div class="pieni himmea">{{ t.vaihto_hinta|euro }}{% if t.vaihto_jaannosvelka %}, velka {{ t.vaihto_jaannosvelka|euro }}{% endif %}</div>{% else %}–{% endif %}</td>
+      <td class="num">{{ t.summat_.maksettava|euro }}</td>
+      <td>{% if t.tila == 'hyvaksytty' %}<span class="merkki ok">Hyväksytty</span>{% if t.sopimus %} <a class="pieni" href="{% url 'autot:sopimus' t.sopimus.id %}">sopimus {{ t.sopimus.numero }}</a>{% endif %}
+          {% elif t.tila == 'hylatty' %}<span class="merkki">Hylätty</span>
+          {% elif t.vanhentunut %}<span class="merkki varoitus">Vanhentunut</span>
+          {% else %}<span class="merkki info">Avoin</span>{% endif %}</td>
+      <td class="oikealle" style="white-space:nowrap">
+        <a class="nappi pieni" href="{% url 'autot:tarjous' t.id %}">Näytä</a>
+        {% if t.tila == 'avoin' and voi_myyda %}
+          <a class="nappi pieni ensisijainen" href="{% url 'autot:myyntisopimus' k.id %}?tarjous={{ t.id }}">Tee sopimus</a>
+          <form method="post" action="{% url 'autot:hylkaa_tarjous' t.id %}" style="display:inline" onsubmit="return confirm('Merkitäänkö tarjous hylätyksi?')">{% csrf_token %}<button class="nappi pieni">Hylkää</button></form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <p class="himmea">Autosta ei ole tehty tarjouksia.{% if voi_myyda %} Tee tarjous asiakkaalle; kun asiakas hyväksyy, tarjouksesta tehdään myyntisopimus yhdellä napilla.{% endif %}</p>
+  {% endif %}
+</div>

@@ -11,11 +11,12 @@ Kaikki funktiot olettavat, että liike on aktivoitu.
 
 from django.db import transaction
 from django.db.models import Max
+from django.utils import timezone
 
 from liikkeet.models import Liike
 
 from . import logiikka, palvelut
-from .models import Ajoneuvo, Sopimus, SopimusRivi, Yritys
+from .models import Ajoneuvo, Lasku, Myyntitarjous, Sopimus, SopimusRivi, Yritys
 
 # Sopimuksen vastapuolen kenttä -> Yritys-mallin kenttä
 VASTAPUOLEN_KENTAT = {
@@ -160,11 +161,12 @@ def tee_ostosopimus(kierto, kayttaja, *, yritys, tiedot, kohde, alv_prosentti):
     palvelut.kirjaa_muutokset(kayttaja, kierto, vanhat, kentat)
     _luo_rivi(sopimus, kierto, "kohde", {**kohde, "alv_kasittely": alv_kasittely})
     palvelut.kirjaa(kayttaja, "kierto", kierto.pk, "ostosopimus", "", f"nro {sopimus.numero}")
+    luo_laskut(sopimus)
     return sopimus
 
 
 @transaction.atomic
-def tee_myyntisopimus(kierto, kayttaja, *, yritys, tiedot, kohde, vaihdot=(), alv_prosentti):
+def tee_myyntisopimus(kierto, kayttaja, *, yritys, tiedot, kohde, vaihdot=(), alv_prosentti, tarjous=None):
     """Myyntisopimus: auto myydyksi, vaihtoajoneuvot varastoon ostohinnalla = vaihtohinta.
 
     vaihdot: dictit, joissa ajoneuvon tiedot (rekisterinumero, vin, merkki, malli, mallitarkenne,
@@ -213,4 +215,116 @@ def tee_myyntisopimus(kierto, kayttaja, *, yritys, tiedot, kohde, vaihdot=(), al
         palvelut.kirjaa(kayttaja, "kierto", vaihtoauto.pk, "myyntisopimuksen vaihtoauto", "", f"nro {sopimus.numero}")
 
     palvelut.kirjaa(kayttaja, "kierto", kierto.pk, "myyntisopimus", "", f"nro {sopimus.numero}")
+    # Tarjous, josta sopimus tehtiin, on hyväksytty; auton muut avoimet tarjoukset raukeavat.
+    if tarjous is not None:
+        tarjous.tila, tarjous.sopimus = "hyvaksytty", sopimus
+        tarjous.save(update_fields=["tila", "sopimus"])
+    Myyntitarjous.objects.filter(kierto=kierto, tila="avoin").update(tila="hylatty")
+    luo_laskut(sopimus)
     return sopimus
+
+
+# ---------- Myyntitarjoukset ----------
+
+
+@transaction.atomic
+def tee_myyntitarjous(kierto, kayttaja, tiedot):
+    """Tallentaa myyntitarjouksen. tiedot: Myyntitarjous-kentät (asiakas, vp_nimi, hinta, vaihto_* ...)."""
+    if not voi_tehda_myyntisopimuksen(kierto):
+        raise palvelut.SiirtoVirhe("Tarjouksen voi tehdä vain varastossa olevasta autosta.")
+    asiakas = tiedot.get("asiakas")
+    if asiakas is not None:
+        for kentta, yk in (("vp_nimi", "nimi"), ("vp_puhelin", "puhelin"), ("vp_sahkoposti", "sahkoposti")):
+            if not tiedot.get(kentta):
+                tiedot[kentta] = getattr(asiakas, yk)
+    Liike.objects.select_for_update().get(pk=kierto.liike_id)
+    numero = (Myyntitarjous.objects.aggregate(m=Max("numero"))["m"] or 0) + 1
+    tarjous = Myyntitarjous.objects.create(kierto=kierto, numero=numero, laatija=kayttaja, **tiedot)
+    palvelut.kirjaa(kayttaja, "kierto", kierto.pk, "myyntitarjous", "", f"nro {numero}: {tarjous.vp_nimi}")
+    return tarjous
+
+
+# ---------- Laskut ----------
+
+
+def _osoite(lahi, postinumero, toimipaikka):
+    return ", ".join(x for x in [lahi, f"{postinumero} {toimipaikka}".strip()] if x)
+
+
+@transaction.atomic
+def luo_laskut(sopimus):
+    """Luo sopimuksen laskut (logiikka.sopimuksen_laskut). Ei tee mitään, jos laskut on jo luotu."""
+    if sopimus.laskut.exists():
+        return list(sopimus.laskut.all())
+    liike = Liike.objects.select_for_update().get(pk=sopimus.liike_id)
+    rivit = list(sopimus.rivit.all())
+    kohteet = [r for r in rivit if r.rooli == "kohde"]
+    vaihdot = [r for r in rivit if r.rooli == "vaihto"]
+    velalliset = vaihdot if sopimus.tyyppi == "myynti" else kohteet
+    laskurivit = logiikka.sopimuksen_laskut(
+        sopimus.tyyppi,
+        sopimus.summat(),
+        vaihdot=[r.hinta for r in vaihdot],
+        jaannosvelat=[(i, r.jaannosvelka) for i, r in enumerate(velalliset)],
+    )
+    kohde = ", ".join(f"{r.merkki_malli} {r.rekisterinumero}".strip() for r in kohteet)
+    asiakas = {
+        "osapuoli_nimi": sopimus.vp_nimi,
+        "osapuoli_tunnus": sopimus.vp_tunnus,
+        "osapuoli_osoite": _osoite(sopimus.vp_lahiosoite, sopimus.vp_postinumero, sopimus.vp_postitoimipaikka),
+    }
+    maksuaika = timezone.timedelta(days=liike.maksuaika_pv)
+    seuraava = {
+        suunta: (Lasku.objects.filter(suunta=suunta).aggregate(m=Max("numero"))["m"] or 0) + 1
+        for suunta in ("myynti", "osto")
+    }
+    laskut = []
+    for lr in laskurivit:
+        numero = seuraava[lr.suunta]
+        seuraava[lr.suunta] += 1
+        nimi = dict(Lasku.LAJIT)[lr.laji]
+        kentat = dict(asiakas)
+        erapaiva = sopimus.pvm + maksuaika
+        tilinumero = liike.tilinumero if lr.suunta == "myynti" else sopimus.vp_tilinumero
+        kuvaus = f"{nimi}: {kohde} ({sopimus.get_tyyppi_display().lower()} {sopimus.numero})"
+        if lr.laji == "etumaksu":
+            erapaiva = sopimus.pvm
+        elif lr.laji == "toimitus":
+            erapaiva = sopimus.erapaiva or sopimus.toimitusaika or erapaiva
+        elif lr.laji == "rahoitus":
+            kentat = {
+                "osapuoli_nimi": sopimus.rahoitusyhtio or "Rahoitusyhtiö",
+                "osapuoli_tunnus": "",
+                "osapuoli_osoite": "",
+            }
+            kuvaus = f"{nimi}: {kohde}, ostaja {sopimus.vp_nimi} (myyntisopimus {sopimus.numero})"
+        elif lr.laji == "vaihtoauto":
+            v = vaihdot[lr.rivi]
+            erapaiva = sopimus.pvm
+            kuvaus = f"{nimi} {v.merkki_malli} {v.rekisterinumero}".strip() + f" ({kohde})"
+        elif lr.laji == "jaannosvelka":
+            v = velalliset[lr.rivi]
+            kentat = {
+                "osapuoli_nimi": v.jaannosvelan_haltija or "Jäännösvelan haltija",
+                "osapuoli_tunnus": "",
+                "osapuoli_osoite": "",
+            }
+            tilinumero = ""
+            kuvaus = f"{nimi}: {v.merkki_malli} {v.rekisterinumero}".strip() + f", velallinen {sopimus.vp_nimi}"
+        laskut.append(
+            Lasku.objects.create(
+                sopimus=sopimus,
+                suunta=lr.suunta,
+                laji=lr.laji,
+                numero=numero,
+                viitenumero=logiikka.viitenumero(1000 + numero) if lr.suunta == "myynti" else "",
+                pvm=sopimus.pvm,
+                erapaiva=erapaiva,
+                tilinumero=tilinumero,
+                summa=lr.summa,
+                kuvaus=kuvaus[:500],
+                maksettu_pvm=sopimus.pvm if lr.maksettu else None,
+                **kentat,
+            )
+        )
+    return laskut

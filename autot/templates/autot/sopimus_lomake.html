@@ -8,6 +8,8 @@
 
 <form method="post" novalidate>
 {% csrf_token %}
+{% if tarjous %}<input type="hidden" name="tarjous" value="{{ tarjous.id }}">
+<div class="ilmoitus info">Tehdään myyntitarjouksesta nro {{ tarjous.numero }} ({{ tarjous.vp_nimi }}, {{ tarjous.pvm|pvm }}). Tiedot on täytetty tarjoukselta – tarkista ja täydennä.</div>{% endif %}
 {% if lomake.non_field_errors %}<div class="ilmoitus virhe">{{ lomake.non_field_errors|join:" " }}</div>{% endif %}
 
 <div class="kortti">

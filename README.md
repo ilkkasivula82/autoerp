@@ -36,7 +36,7 @@ Testit: `python manage.py test`.
 - **Tilat** Tarjottu → Ostettu → Tulossa → Kunnostuksessa → Myynnissä → Varattu → Myyty → Toimitettu sekä Hylätty.
   Tilahistoria kertoo vaihekohtaiset kestot. **Tehtäväpohjat** luovat vaiheen tehtävät automaattisesti.
 - **Kuntoraportti** kahdesti (tarjous / saapuminen) erot korostettuina, rengassarjat, vauriot kuvineen,
-  kuvat (ulko / sisä / vaurio / dokumentti), varustekatalogi, yritykset (toimittajat ja asiakkaat), muutosloki.
+  kuvat (ulko / sisä / vaurio / dokumentti; 15 vakiopaikkaa, raahaa ja pudota, ohjattu kuvaus puhelimella), varustekatalogi, yritykset (toimittajat ja asiakkaat), muutosloki.
 - **Rahat sentteinä**, pyöristys `Decimal`-aritmetiikalla.
 
 ### Miten auto tulee varastoon
@@ -61,6 +61,28 @@ juokseva sopimusnumero liikkeittäin) ja tulostetaan selaimesta (Tulosta / talle
 - Hinnat sopimuksella ovat käteishintoja (ALV-kaupassa verollisia); kierrolle tallennetaan ALV-kaupassa veroton hinta.
 - Liikkeen yhteystiedot sekä omat osto- ja myyntiehdot (sopimuksen liitteeksi) asetetaan Hallinta → Asetukset.
 
+### Myyntitarjoukset
+
+Varastossa olevasta autosta tehdään tarjous asiakkaalle (hinta, toimistokulut, vaihtoauto ja sen jäännösvelka).
+Tarjoukset näkyvät auton Tarjoukset-välilehdellä ja tulostuvat / lähtevät sähköpostilla. "Tee sopimus" avaa
+myyntisopimuksen tarjouksen tiedoilla; sopimuksen tallennus merkitsee tarjouksen hyväksytyksi ja muut auton
+avoimet tarjoukset hylätyiksi.
+
+### Laskut
+
+Sopimuksen tallennus luo laskut automaattisesti (`sopimukset.luo_laskut`, säännöt `logiikka.sopimuksen_laskut`):
+
+- Myyntisopimus: oma myyntilasku käsirahasta (eräpäivä heti), rahoitusyhtiön osuudesta (maksaja rahoitusyhtiö)
+  ja toimituksessa maksettavasta (eräpäivä sopimuksen eräpäivä / toimitusaika / maksuaika) sekä kuitattu
+  "lasku" vaihtoajoneuvosta. Jos vaihtoauto on kauppahintaa arvokkaampi, erotuksesta tulee ostolasku asiakkaalle.
+- Jäännösvelka (vaihtoauton tai ostetun auton): ostolasku velan haltijalle. Esim. vaihtoauto 10 000 €, velkaa
+  8 000 € → asiakkaalle jää hyväksi 2 000 €, ja liike maksaa 8 000 € rahoittajalle.
+- Ostosopimus: ostolasku myyjälle (käteishinta − jäännösvelka).
+
+Sopimuksen "Kaupan erittely ja laskut" -sivu näyttää hinnan jakautumisen ja ALV-käsittelyn; laskut tulostetaan
+selaimesta. Myyntilaskuissa on viitenumero, marginaaliautoissa merkintä "Voittomarginaalijärjestely – käytetyt
+tavarat". Laskut-sivulla kirjataan maksut. Maksuaika on liikkeen asetus.
+
 ### Monivuokraajuus
 
 Jokainen rivi kuuluu liikkeelle (`liike_id`). `LiikeMiddleware` aktivoi kirjautuneen käyttäjän liikkeen,
@@ -76,21 +98,25 @@ Testit: `autot/tests/test_monivuokraajuus.py`.
 - **Normaali ALV:** kaikki verottomina, kate = myynti − osto − kulut.
 - ALV-kanta on liikkeen asetus (Hallinta → Asetukset).
 
-**Menettely.** Autokohtainen vero vastaa tavarakohtaista menettelyä. Kuukausikohtaisessa menettelyssä (autokaupan
+**Menettely** on liikkeen asetus (oletus kuukausikohtainen). Autokohtainen vero vastaa tavarakohtaista menettelyä. Kuukausikohtaisessa menettelyssä (autokaupan
 yleisin) ilmoitettava vero lasketaan kuukauden kaikkien marginaaliostojen ja -myyntien erotuksesta. Auton oma
 vero-osuus on silloinkin käyttökelpoinen yksittäisen auton katteen arvioon, mutta se ei ole ilmoitettava vero.
+Kuukausikohtaisessa menettelyssä tappiollinen kauppa pienentää kuukauden veroa, joten auton vero-osuus voi olla
+negatiivinen; tavarakohtaisessa se on vähintään 0.
 
 **Netto vai brutto.** Yläpalkin valitsimella (Netto / Brutto) käyttäjä valitsee, näytetäänkö rahaluvut listoilla,
 kortilla ja raporteilla ilman alv:tä vai alv:n kanssa. Valinta tallentuu käyttäjälle.
 
 | | Netto (alv 0) | Brutto (sis. alv) |
 |---|---|---|
-| Myynti | marginaali: myyntihinta − vero; ALV: veroton | marginaali: myyntihinta; ALV: veroton × (1 + alv) |
-| Osto | ostohinta (ALV: veroton) | marginaali: ostohinta (ei vähennettävää veroa); ALV: verollinen |
+| Myynti | marginaali: myyntihinta / (1 + alv); ALV: veroton | marginaali: myyntihinta; ALV: veroton × (1 + alv) |
+| Osto | marginaali: laskennallinen (myynti netto − bruttokate); ALV: veroton | marginaali: ostohinta; ALV: verollinen |
 | Kulut | verottomina | verollisina, kukin omalla ALV-kannallaan (syötetty summa säilyy sentilleen) |
 | Kate | myynti − osto − kulut | myynti − osto − kulut |
 
-Myyntisaatavat näytetään aina verollisina.
+Marginaaliauton nettoluvut ovat laskennallisia: myynti ja osto pienenevät veron verran niin, että erotus on
+bruttokate (myynti − vero − osto). Myymättömän auton netto-ostohinta on ostohinta / (1 + alv). Myyntisaatavat
+näytetään aina verollisina.
 
 ## Tuotanto (Render)
 
@@ -123,6 +149,9 @@ tunnin voimassa olevaan allekirjoitettuun osoitteeseen.
 ## Seuraavat askeleet
 
 1. Kokeilu N247:n kanssa ja palautteen perusteella korjaukset.
+1. Sähköinen allekirjoitus sopimuksille; tarjous sähköpostilla, asiakkaan hyväksyntä linkistä ja sopimus
+   automaattisesti allekirjoitettavaksi.
+1. Laskujen lähetys (PDF / verkkolasku) suoraan järjestelmästä; nopea "lisää auto puhelimella" -lomake.
 2. Procountor-integraatio: myyntilasku kaupasta, ostot ja kulut kirjanpitoon.
 3. Rekisterihaku Traficomin sopimuskumppanin rajapinnan kautta (koodistot vastaavat Traficomin koodeja; tarkistettava).
 4. Hinta-arvio omasta kauppadatasta.

@@ -54,7 +54,7 @@ def index(request):
         .order_by("myyntipvm", "id")
     )
     for r in rivit:
-        r.luvut = r.kate(alv).luvut(brutto)
+        r.luvut = r.kate(request.liike).luvut(brutto)
         r.kiertoaika = (r.myyntipvm - r.ostopvm).days if r.ostopvm else None
     kanavat = dict(logiikka.OSTOKANAVAT)
 
@@ -62,7 +62,7 @@ def index(request):
     ika = []
     for nimi, a, b in [("0–30 pv", 0, 30), ("31–60 pv", 31, 60), ("61–90 pv", 61, 90), ("yli 90 pv", 91, 10**6)]:
         ryhma = [r for r in varasto if a <= (logiikka.paivia_valissa(r.ostopvm, tanaan) or 0) <= b]
-        ika.append({"nimi": nimi, "n": len(ryhma), "sidottu": sum(r.sidottu(alv, brutto) for r in ryhma)})
+        ika.append({"nimi": nimi, "n": len(ryhma), "sidottu": sum(r.sidottu(request.liike, brutto) for r in ryhma)})
 
     saatavat = list(
         Kierto.objects.filter(myyntihinta__isnull=False, maksettu_pvm__isnull=True)

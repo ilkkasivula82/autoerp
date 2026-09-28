@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block otsikko %}Laskut{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi"><div><h1>Laskut</h1>
+  <div class="himmea">Laskut syntyvät osto- ja myyntisopimuksista automaattisesti. Myyntilaskut maksaa asiakas tai rahoitusyhtiö, ostolaskut liike.</div></div></div>
+<div class="valilehdet">
+  <a href="?tila={{ tila }}" class="{% if not suunta %}aktiivinen{% endif %}">Kaikki</a>
+  {% for avain, nimi in SUUNNAT %}<a href="?suunta={{ avain }}&amp;tila={{ tila }}" class="{% if suunta == avain %}aktiivinen{% endif %}">{{ nimi }}t</a>{% endfor %}
+</div>
+<div class="siirrot" style="margin-bottom:12px">
+  {% for avain, nimi in TILAT %}<a class="nappi pieni{% if tila == avain %} ensisijainen{% endif %}" href="?{% if suunta %}suunta={{ suunta }}&amp;{% endif %}tila={{ avain }}">{{ nimi }}</a>{% endfor %}
+  {% if tila != 'maksetut' %}<span class="himmea pieni" style="align-self:center">Avoinna: myyntilaskut {{ myynti_avoinna|euro:True }} · ostolaskut {{ osto_avoinna|euro:True }}</span>{% endif %}
+</div>
+<div class="kortti" style="padding:0"><div class="taulukko-kaari"><table>
+  <thead><tr><th>Lasku</th><th>Osa</th><th>Maksaja / saaja</th><th>Sopimus</th><th>Eräpäivä</th><th class="num">Summa</th><th>Tila</th><th></th></tr></thead>
+  {% for lk in rivit %}
+  <tr class="klikattava" data-href="{% url 'autot:lasku' lk.id %}">
+    <td class="nowrap"><a href="{% url 'autot:lasku' lk.id %}">{{ lk.get_suunta_display }} {{ lk.numero }}</a></td>
+    <td>{{ lk.get_laji_display }}</td>
+    <td>{{ lk.osapuoli_nimi }}</td>
+    <td class="nowrap"><a href="{% url 'autot:sopimuksen_laskut' lk.sopimus_id %}">{{ lk.sopimus.get_tyyppi_display }} {{ lk.sopimus.numero }}</a></td>
+    <td class="nowrap">{% if lk.myohassa %}<span class="merkki virhe">{{ lk.erapaiva|pvm }}</span>{% else %}{{ lk.erapaiva|pvm }}{% endif %}</td>
+    <td class="num">{{ lk.summa|euro:True }}</td>
+    <td>{% if lk.maksettu %}<span class="merkki ok">{% if lk.laji == 'vaihtoauto' %}Hyvitetty{% else %}Maksettu{% endif %}</span>{% else %}<span class="merkki info">Avoin</span>{% endif %}</td>
+    <td class="oikealle"><form method="post" action="{% url 'autot:lasku_maksettu' lk.id %}">{% csrf_token %}<input type="hidden" name="takaisin" value="{{ request.get_full_path }}"><button class="nappi pieni">{% if lk.maksettu %}Avoimeksi{% else %}Maksettu{% endif %}</button></form></td>
+  </tr>
+  {% empty %}<tr><td colspan="8" class="himmea">Ei laskuja.</td></tr>{% endfor %}
+</table></div></div>
+{% endblock %}

@@ -7,7 +7,7 @@ sama lomake toimii tavallisena POSTina, jonka jälkeen ohjataan kortille.
 
 from django.contrib import messages
 from django.db import IntegrityError, transaction
-from django.db.models import Max, Q
+from django.db.models import Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -51,6 +51,7 @@ from .yhteiset import kortille, on_htmx
 VALILEHDET = [
     ("yhteenveto", "Yhteenveto"),
     ("kauppa", "Osto ja myynti"),
+    ("tarjoukset", "Tarjoukset"),
     ("ajoneuvo", "Ajoneuvo"),
     ("kulut", "Kulut"),
     ("kunto", "Kunto"),
@@ -99,6 +100,7 @@ def _laskurit(kierto):
         "kuvat": kierto.kuvat.count(),
         "varusteet": AjoneuvonVaruste.objects.filter(ajoneuvo_id=kierto.ajoneuvo_id).count(),
         "tehtavat": kierto.tehtavat.filter(tehty=False).count(),
+        "tarjoukset": kierto.myyntitarjoukset.filter(tila="avoin").count(),
     }
 
 
@@ -119,7 +121,7 @@ def _yhteenveto(request, k):
             polku.append((nimi, "ohitettu" if ohi else ""))
     avoimet = list(k.tehtavat.filter(tehty=False).select_related("vastuu"))
     return {
-        "kate": k.kate(request.liike.alv_prosentti),
+        "kate": k.kate(request.liike),
         "brutto": nayta_brutto(request),
         "polku": polku,
         "siirrot": siirrot,
@@ -135,6 +137,13 @@ def _yhteenveto(request, k):
 
 def _kauppa(request, k, lomake=None):
     return {"lomake": lomake or KauppaLomake(instance=k)}
+
+
+def _tarjoukset(request, k):
+    tarjoukset = list(k.myyntitarjoukset.select_related("laatija", "sopimus"))
+    for t in tarjoukset:
+        t.summat_ = t.summat()
+    return {"tarjoukset": tarjoukset, "voi_myyda": sopimuspalvelu.voi_tehda_myyntisopimuksen(k)}
 
 
 def _ajoneuvo(request, k, lomake=None):
@@ -192,12 +201,25 @@ def _kunto(request, k, kuntolomakkeet=None, rengaslomake=None, vauriolomake=None
 
 def _kuvat(request, k):
     kaikki = list(k.kuvat.all())
+    paikoilla = {x.paikka: x for x in kaikki if x.paikka}
+    vakiopaikat = [{"paikka": p, "nimi": n, "tyyppi": t, "kuva": paikoilla.get(p)} for p, n, t in Kuva.VAKIOPAIKAT]
     ryhmat = []
     for tyyppi, otsikko in Kuva.TYYPIT:
-        ryhma = sorted((x for x in kaikki if x.tyyppi == tyyppi), key=lambda x: (x.jarjestys, x.id))
+        ryhma = sorted((x for x in kaikki if x.tyyppi == tyyppi and not x.paikka), key=lambda x: (x.jarjestys, x.id))
         if ryhma:
             ryhmat.append((otsikko, ryhma))
-    return {"kuvaryhmat": ryhmat, "kuvia": len(kaikki), "kuvatyypit": Kuva.TYYPIT, "latauslomake": KuvaLatausLomake()}
+    return {
+        "vakiopaikat": vakiopaikat,
+        "vakioryhmat": [
+            ("Ulkokuvat", [v for v in vakiopaikat if v["tyyppi"] == "ulko"]),
+            ("Sisäkuvat ja moottoritila", [v for v in vakiopaikat if v["tyyppi"] == "sisa"]),
+        ],
+        "vakiokuvia": len(paikoilla),
+        "kuvaryhmat": ryhmat,
+        "kuvia": len(kaikki),
+        "kuvatyypit": Kuva.TYYPIT,
+        "latauslomake": KuvaLatausLomake(),
+    }
 
 
 def _varusteet(request, k):
@@ -241,6 +263,7 @@ def _historia(request, k):
 RAKENTAJAT = {
     "yhteenveto": _yhteenveto,
     "kauppa": _kauppa,
+    "tarjoukset": _tarjoukset,
     "ajoneuvo": _ajoneuvo,
     "kulut": _kulut,
     "kunto": _kunto,
@@ -508,26 +531,25 @@ def vaurio_korjattu(request, kid, vid):
 
 @require_POST
 def lataa_kuvat(request, kid):
+    """Kuvat kierrolle. Lomake, raahaa ja pudota -alue sekä vakiopaikan kuvaus puhelimella tulevat tänne.
+
+    paikka: vakiopaikka (esim. etu_vasen); silloin käytetään ensimmäistä tiedostoa ja paikan
+    aiempi kuva siirtyy muihin kuviin.
+    """
     k = hae_kierto(kid)
-    tyyppi = request.POST.get("tyyppi")
-    if tyyppi not in dict(Kuva.TYYPIT):
-        tyyppi = "ulko"
-    on_paakuva = k.kuvat.filter(paakuva=True).exists()
-    seuraava = (k.kuvat.aggregate(m=Max("jarjestys"))["m"] or 0) + 1
-    n = 0
-    for tiedosto in request.FILES.getlist("kuvat"):
-        try:
-            avain = kuvatallennus.tallenna_kuva(tiedosto, request.liike.pk, k.pk)
-        except kuvatallennus.KuvaVirhe:
-            messages.error(request, f"Kuvaa {tiedosto.name} ei voitu lukea.")
-            continue
-        paa = not on_paakuva and n == 0 and tyyppi == "ulko"
-        Kuva.objects.create(
-            kierto=k, avain=avain, tyyppi=tyyppi, jarjestys=seuraava + n, paakuva=paa, luonut=request.user
-        )
-        n += 1
-    if n:
-        messages.success(request, f"{n} kuvaa lisätty.")
+    lisatyt, virheelliset = palvelut.lisaa_kuvat(
+        k,
+        request.FILES.getlist("kuvat"),
+        request.user,
+        tyyppi=request.POST.get("tyyppi"),
+        paikka=request.POST.get("paikka"),
+    )
+    for nimi in virheelliset:
+        messages.error(request, f"Kuvaa {nimi} ei voitu lukea.")
+    if len(lisatyt) == 1 and lisatyt[0].paikka:
+        messages.success(request, f"Kuva lisätty: {lisatyt[0].get_paikka_display()}.")
+    elif lisatyt:
+        messages.success(request, f"{len(lisatyt)} kuvaa lisätty.")
     return _vastaa(request, k, "kuvat")
 
 
@@ -565,15 +587,18 @@ def vaihda_kuvatyyppi(request, kuva_id):
     tyyppi = request.POST.get("tyyppi")
     if tyyppi in dict(Kuva.TYYPIT):
         kuva.tyyppi = tyyppi
-        kuva.save(update_fields=["tyyppi"])
+        kuva.paikka = ""  # tyypin vaihto irrottaa kuvan vakiopaikalta
+        kuva.save(update_fields=["tyyppi", "paikka"])
     return _vastaa(request, hae_kierto(kuva.kierto_id), "kuvat")
 
 
 @require_POST
 def siirra_kuva(request, kuva_id, suunta):
     kuva = _hae_kuva(kuva_id)
+    if kuva.paikka:  # vakiopaikkojen järjestys on kiinteä
+        return _vastaa(request, hae_kierto(kuva.kierto_id), "kuvat")
     ids = list(
-        Kuva.objects.filter(kierto_id=kuva.kierto_id, tyyppi=kuva.tyyppi)
+        Kuva.objects.filter(kierto_id=kuva.kierto_id, tyyppi=kuva.tyyppi, paikka="")
         .order_by("jarjestys", "id")
         .values_list("id", flat=True)
     )

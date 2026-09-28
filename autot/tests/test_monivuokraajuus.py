@@ -18,6 +18,8 @@ from autot.models import (
     Kulu,
     Kuntoraportti,
     Kuva,
+    Lasku,
+    Myyntitarjous,
     Rengassarja,
     Sopimus,
     SopimusRivi,
@@ -208,13 +210,19 @@ class LukuTestit(Pohja):
             reverse("autot:kortti", args=[self.a.kierto.pk]) + "?v=tehtavat",
             reverse("autot:kortti", args=[self.a.kierto.pk]) + "?v=kunto",
             reverse("autot:kortti", args=[self.a.kierto.pk]) + "?v=varusteet",
+            reverse("autot:kortti", args=[self.a.kierto.pk]) + "?v=tarjoukset",
+            reverse("autot:tarjous", args=[self.a.tarjous.pk]),
+            reverse("autot:uusi_tarjous", args=[self.a.kierto.pk]),
+            reverse("autot:laskut") + "?tila=kaikki",
+            reverse("autot:lasku", args=[self.a.lasku.pk]),
+            reverse("autot:sopimuksen_laskut", args=[self.a.sopimus.pk]),
         ]
         for url in urlit:
             with self.subTest(url=url):
                 vastaus = self.client.get(url)
                 self.assertEqual(vastaus.status_code, 200)
                 sisalto = vastaus.content.decode()
-                for vieras in ["Liike B", "Malli-b", "Kulu b", "Tehtävä b", "Vaurio b", "Loki b", "@b.fi"]:
+                for vieras in ["Liike B", "Malli-b", "Kulu b", "Tehtävä b", "Vaurio b", "Loki b", "@b.fi", "Lasku b"]:
                     self.assertNotIn(vieras, sisalto)
                 self.assertNotIn(f"/autot/{self.b.kierto.pk}/", sisalto)
 
@@ -264,6 +272,8 @@ class KirjoitusTestit(Pohja):
             self.assertEqual(Sopimus.objects.get().lisatiedot, "Sopimus b")
             self.assertTrue(Varustekategoria.objects.filter(pk=self.b.kategoria.pk).exists())
             self.assertEqual(Kayttaja.liikkeen.get(pk=self.b.myyja.pk).rooli, "myynti")
+            self.assertEqual(Myyntitarjous.objects.get().tila, "avoin")
+            self.assertEqual(Lasku.objects.get().maksettu_pvm, None)
 
     def test_kierron_toiminnot_404(self):
         b, kid = self.b, self.b.kierto.pk
@@ -398,6 +408,42 @@ class KirjoitusTestit(Pohja):
             self.assertEqual(Sopimus.objects.count(), 1)
         self.assert_b_ennallaan()
 
+    def test_tarjoukset_ja_laskut(self):
+        """Toisen liikkeen tarjous, lasku tai sopimus: 404, eikä mitään muutu."""
+        b = self.b
+        for url in [
+            reverse("autot:tarjous", args=[b.tarjous.pk]),
+            reverse("autot:uusi_tarjous", args=[b.kierto.pk]),
+            reverse("autot:lasku", args=[b.lasku.pk]),
+            reverse("autot:sopimuksen_laskut", args=[b.sopimus.pk]),
+            # Oma auto, mutta toisen liikkeen tarjous
+            reverse("autot:myyntisopimus", args=[self.a.kierto.pk]) + f"?tarjous={b.tarjous.pk}",
+        ]:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 404)
+        pyynnot = [
+            ("autot:uusi_tarjous", [b.kierto.pk], {"vp_nimi": "X", "hinta": "1", "pvm": "2026-09-01"}),
+            ("autot:hylkaa_tarjous", [b.tarjous.pk], {}),
+            ("autot:lasku_maksettu", [b.lasku.pk], {}),
+            ("autot:luo_laskut", [b.sopimus.pk], {}),
+            ("autot:myyntisopimus", [self.a.kierto.pk], {"tarjous": b.tarjous.pk}),
+        ]
+        for nimi, args, data in pyynnot:
+            with self.subTest(nimi=nimi):
+                self.assertEqual(self.client.post(reverse(nimi, args=args), data).status_code, 404)
+        # Oma auto, mutta asiakkaaksi toisen liikkeen yritys: lomake hylkää
+        vastaus = self.client.post(
+            reverse("autot:uusi_tarjous", args=[self.a.kierto.pk]),
+            {"asiakas": b.asiakas.pk, "hinta": "1", "pvm": "2026-09-01"},
+        )
+        self.assertEqual(vastaus.status_code, 422)
+        with liike_kaytossa(self.a.liike):
+            self.assertEqual(Myyntitarjous.objects.count(), 1)
+            self.assertEqual(Lasku.objects.count(), 1)
+        with liike_kaytossa(b.liike):
+            self.assertEqual(Lasku.objects.count(), 1)
+        self.assert_b_ennallaan()
+
     def test_hallinta_404(self):
         self.client.post(reverse("autot:yritykset"), {"id": self.b.yritys.pk, "nimi": "Kaapattu", "tyyppi": "muu"})
         self.client.post(
@@ -428,7 +474,16 @@ class KirjoitusTestit(Pohja):
         self.assertFalse(Kayttaja.objects.get(pk=self.b.myyja.pk).nayta_brutto)
 
     def test_asetukset_muuttavat_vain_omaa_liiketta(self):
-        self.client.post(reverse("autot:asetukset"), {"toiminto": "liike", "nimi": "Uusi nimi", "alv_prosentti": "24"})
+        self.client.post(
+            reverse("autot:asetukset"),
+            {
+                "toiminto": "liike",
+                "nimi": "Uusi nimi",
+                "alv_prosentti": "24",
+                "marginaalimenettely": "kuukausi",
+                "maksuaika_pv": "14",
+            },
+        )
         self.b.liike.refresh_from_db()
         self.a.liike.refresh_from_db()
         self.assertEqual(self.a.liike.nimi, "Uusi nimi")

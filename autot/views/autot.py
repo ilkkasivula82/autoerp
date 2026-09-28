@@ -73,13 +73,12 @@ def lista(request):
         ),
     ).order_by("-tila_muutettu", "-id")
 
-    alv = request.liike.alv_prosentti
     brutto = nayta_brutto(request)
     tanaan = timezone.localdate()
     rivit = list(qs)
     yht = {"osto": 0, "kulut": 0, "kate": 0}
     for r in rivit:
-        r.h = hinnat(r, alv, brutto)
+        r.h = hinnat(r, request.liike, brutto)
         r.tilassa = logiikka.paivia_valissa(timezone.localtime(r.tila_muutettu).date(), tanaan)
         r.varastossa = logiikka.paivia_valissa(r.ostopvm, tanaan) if r.tila in logiikka.VARASTOTILAT else None
         yht["osto"] += r.h.osto or 0
@@ -165,6 +164,9 @@ def uusi(request):
         except (palvelut.SiirtoVirhe, IntegrityError):
             messages.error(request, "Autolla on jo avoin kierros.")
             return redirect("autot:lista")
+        _, virheelliset = palvelut.lisaa_kuvat(kierto, request.FILES.getlist("kuvat"), request.user)
+        for nimi in virheelliset:
+            messages.error(request, f"Kuvaa {nimi} ei voitu lukea.")
         if palaava:
             messages.success(
                 request,

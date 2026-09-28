@@ -689,7 +689,9 @@ class HintanakymaTestit(Pohja):
         k = self.d.kierto
         netto = self.client.get(self.kortti(k.pk))
         self.assertContains(netto, "netto, alv 0")
-        self.assertContains(netto, "Voittomarginaalivero")
+        self.assertContains(netto, "auton voittomarginaalivero")
+        # Netto: 10 000 / 1,255 = 7 968,13 -> 7 968 €
+        self.assertContains(netto, "7 968 €")
         self.valitse(True)
         brutto = self.client.get(self.kortti(k.pk))
         self.assertContains(brutto, "brutto, sis. alv")
@@ -731,11 +733,46 @@ class HintanakymaTestit(Pohja):
 
     def test_sidottu_paaoma(self):
         k = Kierto.objects.kulusummilla().get(pk=self.d.kierto.pk)
-        alv = self.d.liike.alv_prosentti
-        self.assertEqual(k.sidottu(alv), 1_000_000 + 12_300)
-        self.assertEqual(k.sidottu(alv, brutto=True), 1_000_000 + 15_437)  # marginaaliosto ilman alv:tä
+        liike = self.d.liike
+        # Marginaaliauto: netto laskennallisesti ilman veroa, brutto ostohinta sellaisenaan
+        self.assertEqual(k.sidottu(liike), 796_813 + 12_300)
+        self.assertEqual(k.sidottu(liike, brutto=True), 1_000_000 + 15_437)
+        liike.marginaalimenettely = "tavara"
+        self.assertEqual(k.sidottu(liike), 1_000_000 + 12_300)
         k.alv_kasittely = "alv"
-        self.assertEqual(k.sidottu(alv, brutto=True), 1_255_000 + 15_437)
+        self.assertEqual(k.sidottu(liike), 1_000_000 + 12_300)
+        self.assertEqual(k.sidottu(liike, brutto=True), 1_255_000 + 15_437)
+
+    def test_varastolistan_ostohinta_muuttuu_esitystavan_mukaan(self):
+        """Marginaaliauton ostohinta vaihtuu Netto/Brutto-valinnalla kuten myynti- ja pyyntihinta."""
+        Kierto.objects.filter(pk=self.d.kierto.pk).update(pyyntihinta=None)  # myös ilman katetta
+        for pyynti in (None, 1_300_000):
+            Kierto.objects.filter(pk=self.d.kierto.pk).update(pyyntihinta=pyynti)
+            with self.subTest(pyynti=pyynti):
+                self.valitse(False)
+                rivi = self.client.get(reverse("autot:lista")).context["rivit"][0]
+                self.assertEqual(rivi.h.osto, 796_813)
+                self.valitse(True)
+                rivi = self.client.get(reverse("autot:lista")).context["rivit"][0]
+                self.assertEqual(rivi.h.osto, 1_000_000)
+
+    def test_menettely_asetuksista(self):
+        self.client.post(
+            reverse("autot:asetukset"),
+            {
+                "toiminto": "liike",
+                "nimi": "Testiliike",
+                "alv_prosentti": "25,5",
+                "marginaalimenettely": "tavara",
+                "maksuaika_pv": "7",
+            },
+        )
+        self.d.liike.refresh_from_db()
+        self.assertEqual((self.d.liike.marginaalimenettely, self.d.liike.maksuaika_pv), ("tavara", 7))
+        # Tavarakohtaisessa menettelyssä myymättömän auton ostohinta on netto sellaisenaan
+        Kierto.objects.filter(pk=self.d.kierto.pk).update(pyyntihinta=None)
+        rivi = self.client.get(reverse("autot:lista")).context["rivit"][0]
+        self.assertEqual(rivi.h.osto, 1_000_000)
 
     def test_syotetty_verollinen_kulu_sailyy_sentilleen(self):
         # 124,00 sis. alv -> 98,80 alv 0; takaisin laskettuna 123,99, mutta syötetty summa säilyy

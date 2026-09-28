@@ -20,6 +20,8 @@ from autot.models import (
     Kierto,
     Kulu,
     Kuntoraportti,
+    Lasku,
+    Myyntitarjous,
     Rengassarja,
     Sopimus,
     Tehtava,
@@ -73,6 +75,8 @@ class Command(BaseCommand):
     def _poista_liike(self, liike):
         # Suojatut viittaukset (PROTECT) poistetaan oikeassa järjestyksessä.
         with liike_kaytossa(liike):
+            Lasku.objects.all().delete()
+            Myyntitarjous.objects.all().delete()
             Sopimus.objects.all().delete()
             Kierto.objects.all().delete()
             Ajoneuvo.objects.all().delete()
@@ -373,7 +377,7 @@ class Command(BaseCommand):
             kierto,
             myyja,
             yritys=yksityinen,
-            tiedot={"tunnistus": "ajokortti", "maksutapa": "tilisiirto"},
+            tiedot={"tunnistus": "ajokortti", "maksutapa": "tilisiirto", "etumaksu": 100_000},
             kohde={"hinta": 1_000_000},
             vaihdot=[
                 {
@@ -394,3 +398,28 @@ class Command(BaseCommand):
             ],
             alv_prosentti=alv,
         )
+        # Avoin myyntitarjous: vaihtoauto 10 000 €, jossa 8 000 € jäännösvelkaa
+        myynnissa = (
+            Kierto.objects.filter(tila="myynnissa", alv_kasittely="marginaali", pyyntihinta__isnull=False)
+            .order_by("id")
+            .first()
+        )
+        if myynnissa:
+            sopimukset.tee_myyntitarjous(
+                myynnissa,
+                myyja,
+                {
+                    "vp_nimi": "Liisa Asiakas",
+                    "vp_puhelin": "050 111 2222",
+                    "vp_sahkoposti": "liisa@example.com",
+                    "hinta": myynnissa.pyyntihinta,
+                    "toimistokulut": 19_000,
+                    "voimassa": timezone.localdate() + timedelta(days=7),
+                    "vaihto_rekisterinumero": "FAB-456",
+                    "vaihto_merkki": "Skoda",
+                    "vaihto_malli": "Octavia",
+                    "vaihto_km": 98_000,
+                    "vaihto_hinta": 1_000_000,
+                    "vaihto_jaannosvelka": 800_000,
+                },
+            )

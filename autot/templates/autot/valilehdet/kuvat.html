@@ -1,12 +1,51 @@
+{% url 'autot:lataa_kuvat' k.id as osoite %}
 <div class="kortti">
-  <h2>Lisää kuvia</h2>
-  {% url 'autot:lataa_kuvat' k.id as osoite %}
-  <form method="post" action="{{ osoite }}" enctype="multipart/form-data" class="latausalue"
-        hx-post="{{ osoite }}" hx-encoding="multipart/form-data" hx-target="#valilehti" hx-disabled-elt="find button">
+  <div class="otsikkorivi" style="margin-bottom:6px">
+    <div>
+      <h2 style="margin:0">Vakiokuvat <span class="laskuri">{{ vakiokuvia }} / {{ vakiopaikat|length }}</span></h2>
+      <p class="pieni himmea" style="margin:4px 0 0">Raahaa kuva paikalleen tai napauta paikkaa: puhelimella avautuu kamera.</p>
+    </div>
+    <button type="button" class="ensisijainen" data-ohjattu-kuvaus>📷 Kuvaa vakiokuvat</button>
+  </div>
+  {% for otsikko, paikat in vakioryhmat %}
+  <h3>{{ otsikko }}</h3>
+  <div class="kuvapaikat">
+    {% for v in paikat %}
+    <form method="post" action="{{ osoite }}" enctype="multipart/form-data"
+          class="kuvapaikka {% if v.kuva %}taytetty{% else %}tyhja{% endif %}{% if v.kuva.paakuva %} paa{% endif %}"
+          data-pudotus data-automaattinen data-paikka="{{ v.paikka }}" data-nimi="{{ v.nimi }}"
+          hx-post="{{ osoite }}" hx-encoding="multipart/form-data" hx-target="#valilehti">
+      {% csrf_token %}
+      <input type="hidden" name="paikka" value="{{ v.paikka }}">
+      <label class="kuvapaikka-kuva" title="{% if v.kuva %}Vaihda kuva{% else %}Lisää kuva{% endif %}">
+        {% if v.kuva %}<img loading="lazy" src="{% url 'autot:kuva_koko' v.kuva.id 'pieni' %}" alt="{{ v.nimi }}">
+        {% else %}<span class="kuvapaikka-tyhja"><span class="kuvapaikka-ikoni">📷</span>Lisää kuva</span>{% endif %}
+        <input type="file" name="kuvat" accept="image/*" capture="environment">
+      </label>
+      <div class="kuvapaikka-nimi">{{ v.nimi }}{% if v.kuva.paakuva %} <span class="merkki">Pääkuva</span>{% endif %}
+        {% if v.kuva %}<button class="linkki vaara pieni" form="poista-paikka-{{ v.paikka }}" title="Poista kuva">✕</button>{% endif %}</div>
+      <noscript><button class="pieni">Lataa</button></noscript>
+    </form>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  <div class="ohjattu-palkki" hidden>
+    <span class="ohjattu-teksti"></span>
+    <button type="button" class="ensisijainen" data-ohjattu-seuraava>Ota kuva</button>
+    <button type="button" data-ohjattu-lopeta>Lopeta</button>
+  </div>
+</div>
+
+<div class="kortti">
+  <h2>Muut kuvat</h2>
+  <form method="post" action="{{ osoite }}" enctype="multipart/form-data" class="latausalue pudotusalue"
+        data-pudotus hx-post="{{ osoite }}" hx-encoding="multipart/form-data" hx-target="#valilehti"
+        hx-disabled-elt="find button">
     {% csrf_token %}
+    <p class="pudotusohje">Raahaa kuvat tähän tai valitse tiedostot. Voit lisätä useita kerralla.</p>
     <div class="kentat">
       {% include "_kentta.html" with kentta=latauslomake.tyyppi %}
-      <div class="leveä"><label for="kuvat">Kuvat (voit valita useita tai ottaa puhelimella)</label><input type="file" id="kuvat" name="kuvat" accept="image/*" multiple required></div>
+      <div class="leveä"><label for="kuvat">Kuvat</label><input type="file" id="kuvat" name="kuvat" accept="image/*" multiple required></div>
     </div>
     <div class="lomake-alas"><button class="ensisijainen">Lataa</button><span class="htmx-indicator pieni himmea">Ladataan…</span></div>
   </form>
@@ -32,6 +71,9 @@
     {% endfor %}
     </div>
   </div>
-{% empty %}
-<p class="himmea">Ei vielä kuvia.</p>
 {% endfor %}
+{% for v in vakiopaikat %}{% if v.kuva %}
+  {% url 'autot:poista_kuva' v.kuva.id as o %}
+  <form id="poista-paikka-{{ v.paikka }}" method="post" action="{{ o }}" hidden data-varmista="Poistetaanko kuva?"
+        hx-post="{{ o }}" hx-target="#valilehti" hx-confirm="Poistetaanko kuva: {{ v.nimi }}?">{% csrf_token %}</form>
+{% endif %}{% endfor %}

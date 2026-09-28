@@ -50,6 +50,7 @@
   <a href="{% url 'autot:sopimukset' %}">← Sopimukset</a>
   {% for r in kohteet %}<a href="{% url 'autot:kortti' r.kierto_id %}">{{ r.merkki_malli }} {{ r.rekisterinumero }}</a>{% endfor %}
   {% for r in vaihdot %}<a href="{% url 'autot:kortti' r.kierto_id %}">Vaihtoauto: {{ r.rekisterinumero|default:r.merkki_malli }}</a>{% endfor %}
+  <a href="{% url 'autot:sopimuksen_laskut' s.id %}">{% if s.tyyppi == 'myynti' %}Kaupan erittely ja laskut{% else %}Maksut ja laskut{% endif %}</a>
   <button type="button" onclick="window.print()">Tulosta / tallenna PDF</button>
 </div>
 {% for viesti in messages %}<div class="ilmoitus">{{ viesti }}</div>{% endfor %}

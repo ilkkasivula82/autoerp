@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block otsikko %}Myyntitarjous{% endblock %}
+{% block sisalto %}
+<div class="otsikkorivi"><div>
+  <h1>Myyntitarjous: {{ a.merkki }} {{ a.malli }} {{ a.rekisterinumero }}</h1>
+  <div class="himmea">Tarjous tallentuu auton Tarjoukset-välilehdelle. Kun asiakas hyväksyy, tarjouksesta tehdään myyntisopimus.</div>
+</div><a class="nappi" href="{% url 'autot:kortti' k.id %}?v=tarjoukset">Peruuta</a></div>
+
+<form method="post" novalidate>
+{% csrf_token %}
+<div class="kortti">
+  <h2>Asiakas</h2>
+  <div class="kentat">
+    {% include "_kentta.html" with kentta=lomake.asiakas leve=True %}
+    {% include "_kentta.html" with kentta=lomake.vp_nimi lisa="(jos ei rekisterissä)" %}
+    {% include "_kentta.html" with kentta=lomake.vp_puhelin %}
+    {% include "_kentta.html" with kentta=lomake.vp_sahkoposti %}
+  </div>
+</div>
+
+<div class="kortti">
+  <h2>Hinta</h2>
+  <div class="kentat">
+    {% include "_kentta.html" with kentta=lomake.hinta %}
+    {% include "_kentta.html" with kentta=lomake.toimistokulut %}
+    {% include "_kentta.html" with kentta=lomake.pvm %}
+    {% include "_kentta.html" with kentta=lomake.voimassa %}
+  </div>
+  <p class="pieni himmea">Verotus: {{ k.get_alv_kasittely_display }}. Hinnat ovat käteishintoja (sis. mahdollisen alv:n).</p>
+</div>
+
+<div class="kortti">
+  <h2>Vaihtoajoneuvo (valinnainen)</h2>
+  <p class="himmea" style="margin-top:-6px">Vaihtohinta hyvitetään hinnasta. Jos vaihtoautossa on jäännösvelkaa, liike maksaa sen rahoittajalle ja se lisätään asiakkaan maksettavaan.</p>
+  <div class="kentat">
+    {% include "_kentta.html" with kentta=lomake.vaihto_rekisterinumero %}
+    {% include "_kentta.html" with kentta=lomake.vaihto_merkki %}
+    {% include "_kentta.html" with kentta=lomake.vaihto_malli %}
+    {% include "_kentta.html" with kentta=lomake.vaihto_km %}
+    {% include "_kentta.html" with kentta=lomake.vaihto_hinta %}
+    {% include "_kentta.html" with kentta=lomake.vaihto_jaannosvelka %}
+  </div>
+</div>
+
+<div class="kortti">
+  <div class="kentat">{% include "_kentta.html" with kentta=lomake.lisatiedot leve=True %}</div>
+  <div class="lomake-alas"><button class="ensisijainen">Tallenna tarjous</button><a class="nappi" href="{% url 'autot:kortti' k.id %}?v=tarjoukset">Peruuta</a></div>
+</div>
+</form>
+{% endblock %}
